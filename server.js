@@ -1,4 +1,3 @@
-// server.js – Express + Socket.IO server
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -9,7 +8,7 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-const players = {};          // socket.id -> { id, health, kills, deaths, alive }
+const players = {};
 let currentMapIndex = 0;
 const MAP_COUNT = 3;
 const MAX_HEALTH = 100;
@@ -55,14 +54,13 @@ io.on('connection', (socket) => {
   });
   broadcastScores();
 
+  // Spiller sender sin ragdoll-tilstand (kun torso data + action)
   socket.on('playerUpdate', (data) => {
     socket.to('game').emit('playerMoved', {
       id: socket.id,
-      x: data.x,
-      y: data.y,
-      vx: data.vx,
-      vy: data.vy,
-      timestamp: Date.now(),
+      torso: data.torso,          // { x, y, angle, vx, vy }
+      action: data.action,        // 'idle','dashing','shooting'
+      aimAngle: data.aimAngle,
     });
   });
 
@@ -118,6 +116,4 @@ setInterval(() => {
 }, 60000);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server kører på port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server kører på port ${PORT}`));
