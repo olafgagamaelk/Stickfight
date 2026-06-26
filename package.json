@@ -1,7 +1,7 @@
 {
-  "name": "brawl-blobs",
+  "name": "stick-brawl",
   "version": "1.0.0",
-  "description": "2D multiplayer physics fighting game with original characters",
+  "description": "Stick Fight-inspired multiplayer ragdoll brawler",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
