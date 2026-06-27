@@ -1,662 +1,165 @@
 <!DOCTYPE html>
-<html lang="da">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stick Brawl</title>
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    html,body { width:100%; height:100%; overflow:hidden; background:#111; }
-    canvas {
-      display:block; position:absolute; top:50%; left:50%;
-      transform:translate(-50%,-50%);
-      max-width:100vw; max-height:100vh;
-      width:800px; height:600px;
-      background:#87CEEB; cursor:none;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Physics Fighter</title>
+
+<style>
+html,body{
+    margin:0;
+    overflow:hidden;
+    background:#d9ecff;
+}
+
+canvas{
+    display:block;
+}
+</style>
 </head>
 <body>
-  <canvas id="gameCanvas"></canvas>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
-  <script>
-    // ==================== KLIENT-KODE ====================
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = 800;
-    canvas.height = 600;
+<canvas id="game"></canvas>
 
-    const socket = io();
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
 
-    // Matter.js aliases
-    const { Engine, World, Bodies, Body, Constraint, Events, Vector, Composite } = Matter;
+<script>
 
-    // ----- Globale variabler -----
-    let localPlayer = null;
-    let remotePlayers = {};
-    let currentMapIndex = 0;
-    let scores = [];
-    let gameBullets = [];      // lokale kugler med skade
-    let visualBullets = [];    // visuelle kugler fra andre
-    let pickups = [];          // våben-pickups
+const socket = io();
 
-    // ----- Input -----
-    const keys = { left: false, right: false, up: false, shoot: false };
-    const mouse = { x: 400, y: 300 };
-    let mouseClicked = false;   // til dash
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-    window.addEventListener('keydown', (e) => {
-      switch(e.code) {
-        case 'KeyA': case 'ArrowLeft': keys.left = true; e.preventDefault(); break;
-        case 'KeyD': case 'ArrowRight': keys.right = true; e.preventDefault(); break;
-        case 'KeyW': case 'ArrowUp': keys.up = true; e.preventDefault(); break;
-        case 'Space': keys.shoot = true; e.preventDefault(); break;
-      }
-    });
-    window.addEventListener('keyup', (e) => {
-      switch(e.code) {
-        case 'KeyA': case 'ArrowLeft': keys.left = false; e.preventDefault(); break;
-        case 'KeyD': case 'ArrowRight': keys.right = false; e.preventDefault(); break;
-        case 'KeyW': case 'ArrowUp': keys.up = false; e.preventDefault(); break;
-        case 'Space': keys.shoot = false; e.preventDefault(); break;
-      }
-    });
-    canvas.addEventListener('mousemove', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      mouse.x = (e.clientX - rect.left) * scaleX;
-      mouse.y = (e.clientY - rect.top) * scaleY;
-    });
-    canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) mouseClicked = true;  // venstreklik = dash
-    });
-    canvas.addEventListener('mouseup', (e) => {
-      if (e.button === 0) mouseClicked = false;
-    });
-    // Forhindre kontekstmenu ved højreklik
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-    // ----- Våben -----
-    const WEAPONS = {
-      pistol: { name: 'Pistol', damage: 25, cooldown: 300, bulletSpeed: 15, bulletSize: 3, bulletCount: 1, spreadAngle: 0 },
-      shotgun: { name: 'Shotgun', damage: 15, cooldown: 600, bulletSpeed: 12, bulletSize: 2, bulletCount: 5, spreadAngle: 0.3 },
-      rifle: { name: 'Rifle', damage: 40, cooldown: 800, bulletSpeed: 20, bulletSize: 4, bulletCount: 1, spreadAngle: 0 }
-    };
+const Engine = Matter.Engine;
+const World = Matter.World;
+const Bodies = Matter.Bodies;
 
-    class WeaponPickup {
-      constructor(x, y, weaponType) {
-        this.x = x; this.y = y; this.w = 20; this.h = 20;
-        this.weaponType = weaponType; this.active = true;
-      }
+const engine = Engine.create();
+const world = engine.world;
+
+world.gravity.y = 1;
+
+const floor = Bodies.rectangle(
+    canvas.width/2,
+    canvas.height-30,
+    canvas.width,
+    60,
+    {
+        isStatic:true
     }
+);
 
-    function spawnWeaponPickups(platforms, count = 3) {
-      const types = ['pistol', 'shotgun', 'rifle'];
-      const arr = [];
-      for (let i = 0; i < count; i++) {
-        const plat = platforms[Math.floor(Math.random() * platforms.length)];
-        const x = plat.x + Math.random() * (plat.w - 20);
-        const y = plat.y - 25;
-        arr.push(new WeaponPickup(x, y, types[i % types.length]));
-      }
-      return arr;
-    }
+World.add(world,floor);
 
-    // ----- Baner -----
-    const MAPS = [
-      {
-        platforms: [
-          { x: 0, y: 550, w: 800, h: 50 },
-          { x: 200, y: 400, w: 150, h: 20 },
-          { x: 500, y: 350, w: 120, h: 20 },
-          { x: 100, y: 250, w: 100, h: 20 },
-          { x: 600, y: 200, w: 100, h: 20 },
-        ],
-        spawnPoints: [ { x: 100, y: 100 }, { x: 700, y: 100 }, { x: 400, y: 50 } ]
-      },
-      {
-        platforms: [
-          { x: 0, y: 550, w: 800, h: 50 },
-          { x: 50, y: 450, w: 200, h: 20 },
-          { x: 550, y: 450, w: 200, h: 20 },
-          { x: 250, y: 350, w: 100, h: 20 },
-          { x: 450, y: 350, w: 100, h: 20 },
-          { x: 150, y: 250, w: 80, h: 20 },
-          { x: 600, y: 250, w: 80, h: 20 },
-        ],
-        spawnPoints: [ { x: 50, y: 100 }, { x: 750, y: 100 }, { x: 400, y: 100 } ]
-      },
-      {
-        platforms: [
-          { x: 0, y: 550, w: 300, h: 50 },
-          { x: 500, y: 550, w: 300, h: 50 },
-          { x: 150, y: 400, w: 120, h: 20 },
-          { x: 350, y: 400, w: 120, h: 20 },
-          { x: 550, y: 300, w: 100, h: 20 },
-          { x: 100, y: 200, w: 100, h: 20 },
-          { x: 650, y: 200, w: 100, h: 20 },
-        ],
-        spawnPoints: [ { x: 100, y: 80 }, { x: 700, y: 80 }, { x: 400, y: 50 } ]
-      }
-    ];
+const player = Bodies.circle(
+    300,
+    200,
+    20
+);
 
-    // ----- Hjælpefunktioner til rendering af ragdoll -----
-    function getBodyPosition(body) {
-      return { x: body.position.x, y: body.position.y, angle: body.angle };
-    }
+World.add(world,player);
 
-    // Tegn en stickman ud fra kropsdele
-    function drawRagdoll(ctx, parts) {
-      const { head, upperTorso, lowerTorso,
-              leftUpperArm, leftLowerArm, rightUpperArm, rightLowerArm,
-              leftUpperLeg, leftLowerLeg, rightUpperLeg, rightLowerLeg } = parts;
-      // Hoved
-      ctx.beginPath();
-      ctx.arc(head.position.x, head.position.y, 12, 0, Math.PI*2);
-      ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+const others = {};
 
-      // Torso
-      ctx.beginPath();
-      ctx.moveTo(upperTorso.position.x, upperTorso.position.y - 15);
-      ctx.lineTo(lowerTorso.position.x, lowerTorso.position.y + 15);
-      ctx.stroke();
+socket.on("currentPlayers",(players)=>{
 
-      // Arme
-      drawLimb(ctx, leftUpperArm, leftLowerArm);
-      drawLimb(ctx, rightUpperArm, rightLowerArm);
-      // Ben
-      drawLimb(ctx, leftUpperLeg, leftLowerLeg);
-      drawLimb(ctx, rightUpperLeg, rightLowerLeg);
+    console.log(players);
 
-      // Tegn små cirkler ved led (valgfrit)
-      const joints = [
-        head.position,
-        upperTorso.position,
-        lowerTorso.position,
-        leftUpperArm.position, leftLowerArm.position,
-        rightUpperArm.position, rightLowerArm.position,
-        leftUpperLeg.position, leftLowerLeg.position,
-        rightUpperLeg.position, rightLowerLeg.position,
-      ];
-      ctx.fillStyle = '#000';
-      joints.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI*2); ctx.fill(); });
-    }
+});
 
-    function drawLimb(ctx, upper, lower) {
-      ctx.beginPath();
-      ctx.moveTo(upper.position.x, upper.position.y);
-      ctx.lineTo(lower.position.x, lower.position.y);
-      ctx.stroke();
-    }
+socket.on("playerJoined",(player)=>{
 
-    // ----- Lokal spiller med ragdoll -----
-    class LocalPlayer {
-      constructor(id, spawnX, spawnY) {
-        this.id = id;
-        this.health = 100;
-        this.maxHealth = 100;
-        this.alive = true;
-        this.weapon = WEAPONS.pistol;
-        this.lastShotTime = 0;
-        this.respawnTimer = 0;
-        this.dashCooldown = 0;        // ms tilbage
-        this.dashCooldownMax = 500;
+    others[player.id]=player;
 
-        // Opret Matter.js bodies
-        this.bodies = this.createRagdoll(spawnX, spawnY);
-        this.parts = this.bodies; // Gem reference til enkelte dele
-        this.engine = Engine.create({ gravity: { x: 0, y: 1.5 } });
-        World.add(this.engine.world, Object.values(this.bodies));
+});
 
-        // Referencer til dele
-        this.head = this.bodies.head;
-        this.upperTorso = this.bodies.upperTorso;
-        // ... (se createRagdoll)
+socket.on("playerUpdate",(player)=>{
 
-        // Tilføj platforme til world (gøres i main)
-        this.platformBodies = [];
-      }
+    others[player.id]=player;
 
-      createRagdoll(x, y) {
-        const group = Body.nextGroup(true); // forhindrer selvkollision
-        const options = { collisionFilter: { group: group } };
+});
 
-        // Mål
-        const head = Bodies.circle(x, y - 60, 12, { ...options, label: 'head' });
-        const upperTorso = Bodies.rectangle(x, y - 30, 16, 30, { ...options, label: 'upperTorso' });
-        const lowerTorso = Bodies.rectangle(x, y, 16, 25, { ...options, label: 'lowerTorso' });
+socket.on("playerLeft",(id)=>{
 
-        const leftUpperArm = Bodies.rectangle(x - 20, y - 30, 8, 20, { ...options, label: 'leftUpperArm' });
-        const rightUpperArm = Bodies.rectangle(x + 20, y - 30, 8, 20, { ...options, label: 'rightUpperArm' });
-        const leftLowerArm = Bodies.rectangle(x - 20, y - 50, 8, 18, { ...options, label: 'leftLowerArm' });
-        const rightLowerArm = Bodies.rectangle(x + 20, y - 50, 8, 18, { ...options, label: 'rightLowerArm' });
+    delete others[id];
 
-        const leftUpperLeg = Bodies.rectangle(x - 10, y + 20, 10, 25, { ...options, label: 'leftUpperLeg' });
-        const rightUpperLeg = Bodies.rectangle(x + 10, y + 20, 10, 25, { ...options, label: 'rightUpperLeg' });
-        const leftLowerLeg = Bodies.rectangle(x - 10, y + 45, 10, 25, { ...options, label: 'leftLowerLeg' });
-        const rightLowerLeg = Bodies.rectangle(x + 10, y + 45, 10, 25, { ...options, label: 'rightLowerLeg' });
+});
 
-        // Constraints
-        const cHead = Constraint.create({ bodyA: head, pointA: { x:0, y:12 }, bodyB: upperTorso, pointB: { x:0, y:-15 } });
-        const cSpine = Constraint.create({ bodyA: upperTorso, pointA: { x:0, y:15 }, bodyB: lowerTorso, pointB: { x:0, y:-12 } });
+window.addEventListener("keydown",(e)=>{
 
-        const cLeftShoulder = Constraint.create({ bodyA: upperTorso, pointA: { x:-8, y:-10 }, bodyB: leftUpperArm, pointB: { x:0, y:-10 } });
-        const cRightShoulder = Constraint.create({ bodyA: upperTorso, pointA: { x:8, y:-10 }, bodyB: rightUpperArm, pointB: { x:0, y:-10 } });
-        const cLeftElbow = Constraint.create({ bodyA: leftUpperArm, pointA: { x:0, y:10 }, bodyB: leftLowerArm, pointB: { x:0, y:-9 } });
-        const cRightElbow = Constraint.create({ bodyA: rightUpperArm, pointA: { x:0, y:10 }, bodyB: rightLowerArm, pointB: { x:0, y:-9 } });
+    if(e.key==="a")
+        Matter.Body.setVelocity(player,{x:-6,y:player.velocity.y});
 
-        const cLeftHip = Constraint.create({ bodyA: lowerTorso, pointA: { x:-8, y:12 }, bodyB: leftUpperLeg, pointB: { x:0, y:-12 } });
-        const cRightHip = Constraint.create({ bodyA: lowerTorso, pointA: { x:8, y:12 }, bodyB: rightUpperLeg, pointB: { x:0, y:-12 } });
-        const cLeftKnee = Constraint.create({ bodyA: leftUpperLeg, pointA: { x:0, y:12 }, bodyB: leftLowerLeg, pointB: { x:0, y:-12 } });
-        const cRightKnee = Constraint.create({ bodyA: rightUpperLeg, pointA: { x:0, y:12 }, bodyB: rightLowerLeg, pointB: { x:0, y:-12 } });
+    if(e.key==="d")
+        Matter.Body.setVelocity(player,{x:6,y:player.velocity.y});
 
-        const parts = { head, upperTorso, lowerTorso,
-                        leftUpperArm, leftLowerArm, rightUpperArm, rightLowerArm,
-                        leftUpperLeg, leftLowerLeg, rightUpperLeg, rightLowerLeg };
-        // Gem constraints til senere (f.eks. disable ved død)
-        this.constraints = [cHead, cSpine, cLeftShoulder, cRightShoulder, cLeftElbow, cRightElbow,
-                            cLeftHip, cRightHip, cLeftKnee, cRightKnee];
-        World.add(this.engine.world, this.constraints);
-        return parts;
-      }
+    if(e.key==="w")
+        Matter.Body.setVelocity(player,{x:player.velocity.x,y:-12});
 
-      setPlatforms(platforms) {
-        // Fjern gamle platforme
-        World.remove(this.engine.world, this.platformBodies);
-        this.platformBodies = platforms.map(p =>
-          Bodies.rectangle(p.x + p.w/2, p.y + p.h/2, p.w, p.h, { isStatic: true })
+});
+
+function draw(){
+
+    Engine.update(engine);
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle="#444";
+
+    ctx.fillRect(
+        0,
+        canvas.height-60,
+        canvas.width,
+        60
+    );
+
+    ctx.beginPath();
+
+    ctx.arc(
+        player.position.x,
+        player.position.y,
+        20,
+        0,
+        Math.PI*2
+    );
+
+    ctx.fillStyle="red";
+    ctx.fill();
+
+    socket.emit("playerUpdate",{
+        x:player.position.x,
+        y:player.position.y
+    });
+
+    for(const id in others){
+
+        ctx.beginPath();
+
+        ctx.arc(
+            others[id].x,
+            others[id].y,
+            20,
+            0,
+            Math.PI*2
         );
-        World.add(this.engine.world, this.platformBodies);
-      }
 
-      update(input, dt) {
-        if (!this.alive) {
-          this.respawnTimer -= dt;
-          if (this.respawnTimer <= 0) this.respawn();
-          Engine.update(this.engine, dt); // stadig simuler fysik så ragdoll falder
-          return;
-        }
+        ctx.fillStyle="blue";
+        ctx.fill();
 
-        const forceScale = 0.005;
-        // Gå/kræfter
-        if (input.keys.left) {
-          Body.applyForce(this.lowerTorso, this.lowerTorso.position, { x: -forceScale, y: 0 });
-        }
-        if (input.keys.right) {
-          Body.applyForce(this.lowerTorso, this.lowerTorso.position, { x: forceScale, y: 0 });
-        }
-
-        // Hop (kun hvis nogen fod er nær jorden – simpel tjek via hastighed)
-        const grounded = this.lowerTorso.velocity.y > -0.5 && this.lowerTorso.velocity.y < 0.5 &&
-                         this.lowerTorso.position.y > 500; // quick hack
-        if (input.keys.up && grounded) {
-          Body.applyForce(this.lowerTorso, this.lowerTorso.position, { x: 0, y: -0.1 });
-        }
-
-        // Balanceringsmoment for at holde oprejst
-        const targetAngle = 0;
-        const angleError = targetAngle - this.upperTorso.angle;
-        const torque = angleError * 0.05;
-        Body.setAngularVelocity(this.upperTorso, this.upperTorso.angularVelocity + torque);
-        Body.setAngularVelocity(this.lowerTorso, this.lowerTorso.angularVelocity + torque);
-
-        // Dash
-        if (this.dashCooldown > 0) this.dashCooldown -= dt;
-        if (mouseClicked && this.dashCooldown <= 0) {
-          const dx = mouse.x - this.upperTorso.position.x;
-          const dy = mouse.y - this.upperTorso.position.y;
-          const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-          const force = 0.15;
-          Body.applyForce(this.upperTorso, this.upperTorso.position, {
-            x: (dx / dist) * force,
-            y: (dy / dist) * force
-          });
-          this.dashCooldown = this.dashCooldownMax;
-          mouseClicked = false; // one dash per click
-        }
-
-        // Våben skud
-        if (input.keys.shoot) this.tryShoot();
-
-        Engine.update(this.engine, dt);
-      }
-
-      tryShoot() {
-        const now = performance.now();
-        if (now - this.lastShotTime < this.weapon.cooldown) return;
-        this.lastShotTime = now;
-        const origin = this.rightLowerArm.position; // skyd fra højre hånd
-        const angle = Math.atan2(mouse.y - origin.y, mouse.x - origin.x);
-        for (let i = 0; i < this.weapon.bulletCount; i++) {
-          let a = angle;
-          if (this.weapon.spreadAngle > 0) {
-            a += (i / (this.weapon.bulletCount - 1) - 0.5) * this.weapon.spreadAngle * 2;
-          }
-          gameBullets.push(new Bullet(origin.x, origin.y, a, this.weapon, this.id));
-        }
-        socket.emit('shoot', { originX: origin.x, originY: origin.y, angle, weaponType: this.weapon.name });
-      }
-
-      die() {
-        this.alive = false;
-        this.health = 0;
-        this.respawnTimer = 3000;
-        // Fjern constraints så ragdoll falder sammen
-        World.remove(this.engine.world, this.constraints);
-      }
-
-      respawn() {
-        const map = MAPS[currentMapIndex];
-        const sp = map.spawnPoints[Math.floor(Math.random() * map.spawnPoints.length)];
-        // Fjern gamle kroppe og opret ny ragdoll
-        World.clear(this.engine.world, false);
-        this.bodies = this.createRagdoll(sp.x, sp.y);
-        World.add(this.engine.world, Object.values(this.bodies));
-        World.add(this.engine.world, this.constraints);
-        this.setPlatforms(MAPS[currentMapIndex].platforms); // genindlæs platforme
-        this.health = this.maxHealth;
-        this.alive = true;
-        socket.emit('respawn');
-      }
-
-      draw(ctx) {
-        if (!this.alive) return;
-        drawRagdoll(ctx, this.bodies);
-        // Evt. tegn våben i hånden
-        const handPos = this.rightLowerArm.position;
-        ctx.fillStyle = '#000';
-        ctx.fillRect(handPos.x - 2, handPos.y - 2, 4, 10);
-      }
-
-      getNetworkData() {
-        return {
-          torso: {
-            x: this.upperTorso.position.x,
-            y: this.upperTorso.position.y,
-            angle: this.upperTorso.angle,
-            vx: this.upperTorso.velocity.x,
-            vy: this.upperTorso.velocity.y,
-          },
-          action: this.dashCooldown > 0 ? 'dashing' : 'idle',
-          aimAngle: Math.atan2(mouse.y - this.upperTorso.position.y, mouse.x - this.upperTorso.position.x),
-        };
-      }
     }
 
-    // ----- Fjernspiller (simpel stickman) -----
-    class RemotePlayer {
-      constructor(id, health) {
-        this.id = id;
-        this.health = health;
-        this.alive = true;
-        this.x = 400; this.y = 300;
-        this.targetX = 400; this.targetY = 300;
-        this.vx = 0; this.vy = 0;
-        this.angle = 0;
-        this.action = 'idle';
-        this.aimAngle = 0;
-        this.walkTime = 0;
-      }
+    requestAnimationFrame(draw);
 
-      setTarget(data) {
-        this.targetX = data.torso.x;
-        this.targetY = data.torso.y;
-        this.vx = data.torso.vx;
-        this.vy = data.torso.vy;
-        this.angle = data.torso.angle;
-        this.action = data.action;
-        this.aimAngle = data.aimAngle;
-      }
+}
 
-      update(dt) {
-        if (!this.alive) return;
-        const lerp = 0.3;
-        this.x += (this.targetX - this.x) * lerp;
-        this.y += (this.targetY - this.y) * lerp;
-        this.walkTime += dt;
-      }
+draw();
 
-      draw(ctx) {
-        if (!this.alive) return;
-        // Tegn en forenklet stickman
-        const x = this.x, y = this.y, angle = this.angle;
-        const headY = y - 40;
-        const hipY = y + 20;
-        const footY = y + 60;
+</script>
 
-        // Krop
-        ctx.beginPath();
-        ctx.moveTo(x, y - 20);
-        ctx.lineTo(x, y + 20);
-        // Hoved
-        ctx.arc(x, headY, 12, 0, Math.PI*2);
-        ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
-
-        // Arme (simpel vinkel baseret på aim)
-        const armAngle = this.aimAngle;
-        const shoulderX = x;
-        const shoulderY = y - 20;
-        ctx.beginPath();
-        ctx.moveTo(shoulderX, shoulderY);
-        ctx.lineTo(shoulderX + Math.cos(armAngle)*20, shoulderY + Math.sin(armAngle)*20);
-        ctx.stroke();
-
-        // Ben (gang animation)
-        const legSpread = Math.sin(this.walkTime * 0.01) * 15;
-        ctx.beginPath();
-        ctx.moveTo(x, y + 20);
-        ctx.lineTo(x - legSpread, footY);
-        ctx.moveTo(x, y + 20);
-        ctx.lineTo(x + legSpread, footY);
-        ctx.stroke();
-      }
-    }
-
-    // ----- Kugler -----
-    class Bullet {
-      constructor(x, y, angle, weapon, ownerId) {
-        this.x = x; this.y = y;
-        this.vx = Math.cos(angle) * weapon.bulletSpeed;
-        this.vy = Math.sin(angle) * weapon.bulletSpeed;
-        this.radius = weapon.bulletSize;
-        this.damage = weapon.damage;
-        this.ownerId = ownerId;
-        this.lifetime = 2000;
-        this.active = true;
-      }
-      update(dt, platforms) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.lifetime -= dt;
-        if (this.lifetime <= 0) { this.active = false; return; }
-        // simpel platformkollision
-        for (let p of platforms) {
-          if (this.x > p.x && this.x < p.x+p.w && this.y > p.y && this.y < p.y+p.h) {
-            this.active = false; break;
-          }
-        }
-        if (this.x<0 || this.x>800 || this.y<0 || this.y>600) this.active = false;
-      }
-      draw(ctx) {
-        if (!this.active) return;
-        ctx.fillStyle = '#ffff00';
-        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fill();
-      }
-    }
-
-    // ----- Renderer -----
-    const Renderer = {
-      drawBackground(ctx, map) {
-        ctx.fillStyle = '#87CEEB'; ctx.fillRect(0,0,800,600);
-        ctx.fillStyle = '#8B4513';
-        for (let p of map.platforms) {
-          ctx.fillRect(p.x,p.y,p.w,p.h);
-          ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(p.x,p.y,p.w,p.h);
-        }
-      },
-      drawPickups(ctx, pickups) {
-        for (let p of pickups) {
-          if (!p.active) continue;
-          ctx.fillStyle = '#FFD700'; ctx.fillRect(p.x,p.y,p.w,p.h);
-          ctx.strokeStyle = '#000'; ctx.strokeRect(p.x,p.y,p.w,p.h);
-          ctx.fillStyle = '#000'; ctx.font = '12px sans-serif';
-          ctx.fillText(p.weaponType.charAt(0).toUpperCase(), p.x+5, p.y+15);
-        }
-      },
-      drawUI(ctx, localPlayer, scores) {
-        if (localPlayer && localPlayer.alive) {
-          ctx.fillStyle = '#fff'; ctx.font = '16px sans-serif';
-          ctx.fillText(`HP: ${localPlayer.health}`, 10, 30);
-          ctx.fillStyle = '#f00'; ctx.fillRect(10,35,100,10);
-          ctx.fillStyle = '#0f0';
-          ctx.fillRect(10,35,100 * (localPlayer.health/localPlayer.maxHealth),10);
-          ctx.strokeStyle = '#000'; ctx.strokeRect(10,35,100,10);
-          ctx.fillText(`Våben: ${localPlayer.weapon.name}`, 10, 65);
-        }
-        ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif';
-        ctx.fillText('Scoreboard', 650, 20);
-        let y = 40;
-        for (let s of scores) {
-          const name = (s.id === localPlayer?.id) ? 'Dig' : s.id.substring(0,6);
-          ctx.fillText(`${name}: ${s.kills}/${s.deaths}`, 650, y);
-          y += 18;
-        }
-        // Sigtekorn
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(mouse.x-10, mouse.y); ctx.lineTo(mouse.x+10, mouse.y);
-        ctx.moveTo(mouse.x, mouse.y-10); ctx.lineTo(mouse.x, mouse.y+10);
-        ctx.stroke();
-      }
-    };
-
-    // ----- Netværk -----
-    socket.on('init', (data) => {
-      localPlayer = new LocalPlayer(data.id, 400, 100);
-      localPlayer.setPlatforms(MAPS[data.mapIndex].platforms);
-      currentMapIndex = data.mapIndex;
-      data.players.forEach(p => {
-        if (p.id !== data.id) remotePlayers[p.id] = new RemotePlayer(p.id, p.health);
-      });
-      scores = data.players.map(p => ({ id: p.id, kills: p.kills, deaths: p.deaths }));
-    });
-
-    socket.on('playerJoined', (data) => {
-      if (data.id !== localPlayer.id) remotePlayers[data.id] = new RemotePlayer(data.id, data.health);
-    });
-
-    socket.on('playerMoved', (data) => {
-      if (remotePlayers[data.id]) remotePlayers[data.id].setTarget(data);
-    });
-
-    socket.on('playerShoot', (data) => {
-      const weapon = Object.values(WEAPONS).find(w => w.name === data.weaponType) || WEAPONS.pistol;
-      for (let i=0; i<weapon.bulletCount; i++) {
-        let a = data.angle;
-        if (weapon.spreadAngle > 0) a += (i/(weapon.bulletCount-1)-0.5)*weapon.spreadAngle*2;
-        visualBullets.push(new Bullet(data.originX, data.originY, a, weapon, data.id));
-      }
-    });
-
-    socket.on('healthUpdate', (data) => { if (localPlayer) localPlayer.health = data.health; });
-    socket.on('playerDied', (data) => {
-      if (data.targetId === localPlayer.id) localPlayer.die();
-      else if (remotePlayers[data.targetId]) remotePlayers[data.targetId].alive = false;
-    });
-    socket.on('playerRespawned', (data) => {
-      if (data.id === localPlayer.id) { /* håndteres af respawn() */ }
-      else if (remotePlayers[data.id]) { remotePlayers[data.id].alive = true; remotePlayers[data.id].health = data.health; }
-    });
-    socket.on('playerDisconnected', (data) => { delete remotePlayers[data.id]; });
-    socket.on('scoreUpdate', (data) => { scores = data; });
-    socket.on('mapChange', (data) => {
-      currentMapIndex = data.mapIndex;
-      gameBullets.length = 0; visualBullets.length = 0;
-      if (localPlayer && localPlayer.alive) {
-        // Genstart ragdoll på nyt spawn
-        World.clear(localPlayer.engine.world, false);
-        localPlayer.bodies = localPlayer.createRagdoll(400, 100);
-        World.add(localPlayer.engine.world, Object.values(localPlayer.bodies));
-        World.add(localPlayer.engine.world, localPlayer.constraints);
-        localPlayer.setPlatforms(MAPS[currentMapIndex].platforms);
-      }
-      pickups = spawnWeaponPickups(MAPS[currentMapIndex].platforms, 3);
-    });
-
-    // Send spillerdata 20 gange/sek
-    setInterval(() => {
-      if (localPlayer && localPlayer.alive) {
-        socket.emit('playerUpdate', localPlayer.getNetworkData());
-      }
-    }, 50);
-
-    // ----- Hovedløkke -----
-    let lastTime = performance.now();
-    function gameLoop(now) {
-      const dt = Math.min(now - lastTime, 50);
-      lastTime = now;
-
-      const map = MAPS[currentMapIndex];
-      const input = { keys, mouse };
-
-      if (localPlayer) {
-        localPlayer.update(input, dt);
-        // Pickup-tjek
-        for (let p of pickups) {
-          if (!p.active) continue;
-          const headPos = localPlayer.head.position;
-          if (headPos.x > p.x && headPos.x < p.x+p.w && headPos.y > p.y && headPos.y < p.y+p.h) {
-            localPlayer.weapon = WEAPONS[p.weaponType];
-            p.active = false;
-            setTimeout(() => p.active = true, 15000);
-          }
-        }
-      }
-
-      for (let id in remotePlayers) remotePlayers[id].update(dt);
-
-      // Opdater kugler og kollision
-      for (let i=gameBullets.length-1; i>=0; i--) {
-        const b = gameBullets[i];
-        b.update(dt, map.platforms);
-        if (!b.active) { gameBullets.splice(i,1); continue; }
-        for (let id in remotePlayers) {
-          const rp = remotePlayers[id];
-          if (!rp.alive) continue;
-          const dx = b.x - rp.x, dy = b.y - (rp.y-20); // ca. torso
-          if (dx*dx + dy*dy < 400) { // simpel radius
-            socket.emit('hit', { targetId: id, damage: b.damage });
-            b.active = false;
-            gameBullets.splice(i,1);
-            break;
-          }
-        }
-      }
-
-      for (let i=visualBullets.length-1; i>=0; i--) {
-        visualBullets[i].update(dt, map.platforms);
-        if (!visualBullets[i].active) visualBullets.splice(i,1);
-      }
-
-      // Render
-      ctx.clearRect(0,0,800,600);
-      Renderer.drawBackground(ctx, map);
-      Renderer.drawPickups(ctx, pickups);
-      for (let id in remotePlayers) remotePlayers[id].draw(ctx);
-      if (localPlayer) localPlayer.draw(ctx);
-      gameBullets.forEach(b => b.draw(ctx));
-      visualBullets.forEach(b => b.draw(ctx));
-      Renderer.drawUI(ctx, localPlayer, scores);
-
-      requestAnimationFrame(gameLoop);
-    }
-
-    // Start
-    pickups = spawnWeaponPickups(MAPS[0].platforms, 3);
-    requestAnimationFrame(gameLoop);
-  </script>
 </body>
 </html>
