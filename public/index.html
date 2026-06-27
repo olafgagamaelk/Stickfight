@@ -148,7 +148,7 @@
             // ─────────────────────────────────────
             const GAME_WIDTH = 1200;
             const GAME_HEIGHT = 700;
-            const NETWORK_UPDATE_RATE = 30; // Hz
+            const NETWORK_UPDATE_RATE = 30;
             const NETWORK_INTERVAL = 1000 / NETWORK_UPDATE_RATE;
             const RESPAWN_Y_THRESHOLD = 780;
             const GROUND_Y = 640;
@@ -210,10 +210,8 @@
                 return plat;
             }
 
-            // Bund
             const ground = createPlatform(GAME_WIDTH / 2, GROUND_Y + GROUND_THICKNESS / 2, GAME_WIDTH,
                 GROUND_THICKNESS);
-            // Vægge (usynlige, holder spillere inde)
             const leftWall = Bodies.rectangle(-30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, {
                 isStatic: true,
                 friction: 0.3,
@@ -226,7 +224,6 @@
                 restitution: 0.2,
                 label: 'wall',
             });
-            // Loft
             const ceiling = Bodies.rectangle(GAME_WIDTH / 2, -30, GAME_WIDTH, 60, {
                 isStatic: true,
                 friction: 0.3,
@@ -234,7 +231,6 @@
                 label: 'wall',
             });
 
-            // Svævende platforme
             const plat1 = createPlatform(280, 470, 190, 18);
             const plat2 = createPlatform(680, 410, 170, 18);
             const plat3 = createPlatform(500, 290, 150, 18);
@@ -264,11 +260,10 @@
             // ─────────────────────────────────────
             // RAGDOLL BYGGER
             // ─────────────────────────────────────
-            function createRagdoll(spawnX, spawnY, color, collisionGroup) {
+            function createRagdoll(spawnX, spawnY, color, collisionGroup, isLocal) {
                 const parts = {};
                 const constraints = [];
 
-                // Dimensioner
                 const headRadius = 17;
                 const upperTorsoW = 28;
                 const upperTorsoH = 38;
@@ -283,222 +278,194 @@
                 const lowerLegW = 11;
                 const lowerLegH = 30;
 
-                // Positioner (top-down)
                 const headY = spawnY;
                 const upperTorsoY = headY + headRadius + upperTorsoH / 2;
                 const lowerTorsoY = upperTorsoY + upperTorsoH / 2 + lowerTorsoH / 2;
                 const shoulderY = headY + headRadius + 4;
                 const hipY = upperTorsoY + upperTorsoH / 2 - 4;
 
-                // Hoved
-                parts.head = Bodies.circle(spawnX, headY, headRadius, {
-                    label: 'head',
+                // Fælles body options
+                const bodyOptions = {
                     restitution: 0.2,
                     friction: 0.5,
-                    density: 0.002,
                     collisionFilter: { group: collisionGroup },
+                    isStatic: !isLocal, // remote spillere er statiske
+                };
+
+                // Hoved
+                parts.head = Bodies.circle(spawnX, headY, headRadius, {
+                    ...bodyOptions,
+                    label: 'head',
+                    density: isLocal ? 0.002 : 0.001,
                 });
 
                 // Overkrop
                 parts.upperTorso = Bodies.rectangle(spawnX, upperTorsoY, upperTorsoW, upperTorsoH, {
+                    ...bodyOptions,
                     label: 'upperTorso',
-                    restitution: 0.2,
-                    friction: 0.5,
-                    density: 0.003,
-                    collisionFilter: { group: collisionGroup },
+                    density: isLocal ? 0.003 : 0.001,
                 });
 
                 // Underkrop
                 parts.lowerTorso = Bodies.rectangle(spawnX, lowerTorsoY, lowerTorsoW, lowerTorsoH, {
+                    ...bodyOptions,
                     label: 'lowerTorso',
-                    restitution: 0.2,
-                    friction: 0.5,
-                    density: 0.0025,
-                    collisionFilter: { group: collisionGroup },
+                    density: isLocal ? 0.0025 : 0.001,
                 });
 
-                // Overarme
                 const armOffsetX = upperTorsoW / 2 + upperArmW / 2 - 1;
                 parts.leftUpperArm = Bodies.rectangle(spawnX - armOffsetX, shoulderY + upperArmH / 2, upperArmW,
                     upperArmH, {
+                        ...bodyOptions,
                         label: 'leftUpperArm',
-                        restitution: 0.2,
-                        friction: 0.5,
-                        density: 0.0015,
-                        collisionFilter: { group: collisionGroup },
+                        density: isLocal ? 0.0015 : 0.001,
                     });
                 parts.rightUpperArm = Bodies.rectangle(spawnX + armOffsetX, shoulderY + upperArmH / 2, upperArmW,
                     upperArmH, {
+                        ...bodyOptions,
                         label: 'rightUpperArm',
-                        restitution: 0.2,
-                        friction: 0.5,
-                        density: 0.0015,
-                        collisionFilter: { group: collisionGroup },
+                        density: isLocal ? 0.0015 : 0.001,
                     });
 
-                // Underarme
                 const lowerArmTopY = shoulderY + upperArmH;
                 parts.leftLowerArm = Bodies.rectangle(spawnX - armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW,
                     lowerArmH, {
+                        ...bodyOptions,
                         label: 'leftLowerArm',
-                        restitution: 0.2,
-                        friction: 0.5,
-                        density: 0.0012,
-                        collisionFilter: { group: collisionGroup },
+                        density: isLocal ? 0.0012 : 0.001,
                     });
                 parts.rightLowerArm = Bodies.rectangle(spawnX + armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW,
                     lowerArmH, {
+                        ...bodyOptions,
                         label: 'rightLowerArm',
-                        restitution: 0.2,
-                        friction: 0.5,
-                        density: 0.0012,
-                        collisionFilter: { group: collisionGroup },
+                        density: isLocal ? 0.0012 : 0.001,
                     });
 
-                // Overben
                 const legOffsetX = lowerTorsoW / 3;
                 const upperLegTopY = lowerTorsoY + lowerTorsoH / 2;
                 parts.leftUpperLeg = Bodies.rectangle(spawnX - legOffsetX, upperLegTopY + upperLegH / 2, upperLegW,
                     upperLegH, {
+                        ...bodyOptions,
                         label: 'leftUpperLeg',
-                        restitution: 0.2,
-                        friction: 0.6,
-                        density: 0.002,
-                        collisionFilter: { group: collisionGroup },
+                        density: isLocal ? 0.002 : 0.001,
                     });
                 parts.rightUpperLeg = Bodies.rectangle(spawnX + legOffsetX, upperLegTopY + upperLegH / 2, upperLegW,
                     upperLegH, {
+                        ...bodyOptions,
                         label: 'rightUpperLeg',
-                        restitution: 0.2,
-                        friction: 0.6,
-                        density: 0.002,
-                        collisionFilter: { group: collisionGroup },
+                        density: isLocal ? 0.002 : 0.001,
                     });
 
-                // Underben
                 const lowerLegTopY = upperLegTopY + upperLegH;
                 parts.leftLowerLeg = Bodies.rectangle(spawnX - legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW,
                     lowerLegH, {
+                        ...bodyOptions,
                         label: 'leftLowerLeg',
-                        restitution: 0.2,
-                        friction: 0.6,
-                        density: 0.0018,
-                        collisionFilter: { group: collisionGroup },
+                        density: isLocal ? 0.0018 : 0.001,
                     });
                 parts.rightLowerLeg = Bodies.rectangle(spawnX + legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW,
                     lowerLegH, {
+                        ...bodyOptions,
                         label: 'rightLowerLeg',
-                        restitution: 0.2,
-                        friction: 0.6,
-                        density: 0.0018,
-                        collisionFilter: { group: collisionGroup },
+                        density: isLocal ? 0.0018 : 0.001,
                     });
 
-                // ─── CONSTRAINTS (led) ───
-                const stiff = 0.6;
-                const damp = 0.08;
+                // Constraints kun til lokal ragdoll
+                if (isLocal) {
+                    const stiff = 0.6;
+                    const damp = 0.08;
 
-                // Hoved → Overkrop
-                constraints.push(Constraint.create({
-                    bodyA: parts.head,
-                    bodyB: parts.upperTorso,
-                    pointA: { x: 0, y: headRadius },
-                    pointB: { x: 0, y: -upperTorsoH / 2 },
-                    stiffness: stiff,
-                    damping: damp,
-                    length: 2,
-                }));
-
-                // Overkrop → Underkrop
-                constraints.push(Constraint.create({
-                    bodyA: parts.upperTorso,
-                    bodyB: parts.lowerTorso,
-                    pointA: { x: 0, y: upperTorsoH / 2 },
-                    pointB: { x: 0, y: -lowerTorsoH / 2 },
-                    stiffness: stiff * 1.2,
-                    damping: damp,
-                    length: 1,
-                }));
-
-                // Overarme → Overkrop (skuldre)
-                constraints.push(Constraint.create({
-                    bodyA: parts.upperTorso,
-                    bodyB: parts.leftUpperArm,
-                    pointA: { x: -upperTorsoW / 2 + 3, y: -upperTorsoH / 2 + 6 },
-                    pointB: { x: 0, y: -upperArmH / 2 },
-                    stiffness: stiff * 0.7,
-                    damping: damp * 1.5,
-                    length: 1,
-                }));
-                constraints.push(Constraint.create({
-                    bodyA: parts.upperTorso,
-                    bodyB: parts.rightUpperArm,
-                    pointA: { x: upperTorsoW / 2 - 3, y: -upperTorsoH / 2 + 6 },
-                    pointB: { x: 0, y: -upperArmH / 2 },
-                    stiffness: stiff * 0.7,
-                    damping: damp * 1.5,
-                    length: 1,
-                }));
-
-                // Overarme → Underarme (albuer)
-                constraints.push(Constraint.create({
-                    bodyA: parts.leftUpperArm,
-                    bodyB: parts.leftLowerArm,
-                    pointA: { x: 0, y: upperArmH / 2 },
-                    pointB: { x: 0, y: -lowerArmH / 2 },
-                    stiffness: stiff * 0.5,
-                    damping: damp * 2,
-                    length: 1,
-                }));
-                constraints.push(Constraint.create({
-                    bodyA: parts.rightUpperArm,
-                    bodyB: parts.rightLowerArm,
-                    pointA: { x: 0, y: upperArmH / 2 },
-                    pointB: { x: 0, y: -lowerArmH / 2 },
-                    stiffness: stiff * 0.5,
-                    damping: damp * 2,
-                    length: 1,
-                }));
-
-                // Underkrop → Overben (hofter)
-                constraints.push(Constraint.create({
-                    bodyA: parts.lowerTorso,
-                    bodyB: parts.leftUpperLeg,
-                    pointA: { x: -lowerTorsoW / 3, y: lowerTorsoH / 2 },
-                    pointB: { x: 0, y: -upperLegH / 2 },
-                    stiffness: stiff * 0.9,
-                    damping: damp,
-                    length: 2,
-                }));
-                constraints.push(Constraint.create({
-                    bodyA: parts.lowerTorso,
-                    bodyB: parts.rightUpperLeg,
-                    pointA: { x: lowerTorsoW / 3, y: lowerTorsoH / 2 },
-                    pointB: { x: 0, y: -upperLegH / 2 },
-                    stiffness: stiff * 0.9,
-                    damping: damp,
-                    length: 2,
-                }));
-
-                // Overben → Underben (knæ)
-                constraints.push(Constraint.create({
-                    bodyA: parts.leftUpperLeg,
-                    bodyB: parts.leftLowerLeg,
-                    pointA: { x: 0, y: upperLegH / 2 },
-                    pointB: { x: 0, y: -lowerLegH / 2 },
-                    stiffness: stiff * 0.6,
-                    damping: damp * 1.8,
-                    length: 1,
-                }));
-                constraints.push(Constraint.create({
-                    bodyA: parts.rightUpperLeg,
-                    bodyB: parts.rightLowerLeg,
-                    pointA: { x: 0, y: upperLegH / 2 },
-                    pointB: { x: 0, y: -lowerLegH / 2 },
-                    stiffness: stiff * 0.6,
-                    damping: damp * 1.8,
-                    length: 1,
-                }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.head,
+                        bodyB: parts.upperTorso,
+                        pointA: { x: 0, y: headRadius },
+                        pointB: { x: 0, y: -upperTorsoH / 2 },
+                        stiffness: stiff,
+                        damping: damp,
+                        length: 2,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.upperTorso,
+                        bodyB: parts.lowerTorso,
+                        pointA: { x: 0, y: upperTorsoH / 2 },
+                        pointB: { x: 0, y: -lowerTorsoH / 2 },
+                        stiffness: stiff * 1.2,
+                        damping: damp,
+                        length: 1,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.upperTorso,
+                        bodyB: parts.leftUpperArm,
+                        pointA: { x: -upperTorsoW / 2 + 3, y: -upperTorsoH / 2 + 6 },
+                        pointB: { x: 0, y: -upperArmH / 2 },
+                        stiffness: stiff * 0.7,
+                        damping: damp * 1.5,
+                        length: 1,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.upperTorso,
+                        bodyB: parts.rightUpperArm,
+                        pointA: { x: upperTorsoW / 2 - 3, y: -upperTorsoH / 2 + 6 },
+                        pointB: { x: 0, y: -upperArmH / 2 },
+                        stiffness: stiff * 0.7,
+                        damping: damp * 1.5,
+                        length: 1,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.leftUpperArm,
+                        bodyB: parts.leftLowerArm,
+                        pointA: { x: 0, y: upperArmH / 2 },
+                        pointB: { x: 0, y: -lowerArmH / 2 },
+                        stiffness: stiff * 0.5,
+                        damping: damp * 2,
+                        length: 1,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.rightUpperArm,
+                        bodyB: parts.rightLowerArm,
+                        pointA: { x: 0, y: upperArmH / 2 },
+                        pointB: { x: 0, y: -lowerArmH / 2 },
+                        stiffness: stiff * 0.5,
+                        damping: damp * 2,
+                        length: 1,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.lowerTorso,
+                        bodyB: parts.leftUpperLeg,
+                        pointA: { x: -lowerTorsoW / 3, y: lowerTorsoH / 2 },
+                        pointB: { x: 0, y: -upperLegH / 2 },
+                        stiffness: stiff * 0.9,
+                        damping: damp,
+                        length: 2,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.lowerTorso,
+                        bodyB: parts.rightUpperLeg,
+                        pointA: { x: lowerTorsoW / 3, y: lowerTorsoH / 2 },
+                        pointB: { x: 0, y: -upperLegH / 2 },
+                        stiffness: stiff * 0.9,
+                        damping: damp,
+                        length: 2,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.leftUpperLeg,
+                        bodyB: parts.leftLowerLeg,
+                        pointA: { x: 0, y: upperLegH / 2 },
+                        pointB: { x: 0, y: -lowerLegH / 2 },
+                        stiffness: stiff * 0.6,
+                        damping: damp * 1.8,
+                        length: 1,
+                    }));
+                    constraints.push(Constraint.create({
+                        bodyA: parts.rightUpperLeg,
+                        bodyB: parts.rightLowerLeg,
+                        pointA: { x: 0, y: upperLegH / 2 },
+                        pointB: { x: 0, y: -lowerLegH / 2 },
+                        stiffness: stiff * 0.6,
+                        damping: damp * 1.8,
+                        length: 1,
+                    }));
+                }
 
                 const allBodies = Object.values(parts);
                 World.add(world, allBodies);
@@ -524,7 +491,7 @@
             const LOCAL_COLLISION_GROUP = -1;
 
             const spawn = getRandomSpawn();
-            let localRagdoll = createRagdoll(spawn.x, spawn.y, localColor, LOCAL_COLLISION_GROUP);
+            let localRagdoll = createRagdoll(spawn.x, spawn.y, localColor, LOCAL_COLLISION_GROUP, true);
 
             // ─────────────────────────────────────
             // INPUT STATE
@@ -567,7 +534,6 @@
             canvas.addEventListener('mousedown', e => {
                 if (e.button === 0) {
                     mouseDownLeft = true;
-                    // Tjek om musen er tæt på egen ragdoll for at gribe fat
                     const nearest = findNearestLocalBody(mouseX, mouseY, 60);
                     if (nearest && !mouseGrabbing) {
                         mouseGrabbing = true;
@@ -637,7 +603,7 @@
             }
 
             // ─────────────────────────────────────
-            // HOP DETEKTION
+            // HOP DETEKTION (forbedret)
             // ─────────────────────────────────────
             let lastGroundContact = 0;
             Events.on(engine, 'collisionStart', (event) => {
@@ -648,7 +614,7 @@
                     const hasLeg = bodies.some(b =>
                         b.label === 'leftLowerLeg' || b.label === 'rightLowerLeg' ||
                         b.label === 'leftUpperLeg' || b.label === 'rightUpperLeg' ||
-                        b.label === 'lowerTorso'
+                        b.label === 'lowerTorso' || b.label === 'upperTorso' || b.label === 'head'
                     );
                     if (hasStatic && hasLeg) {
                         lastGroundContact = performance.now();
@@ -657,7 +623,7 @@
             });
 
             function isGrounded() {
-                return (performance.now() - lastGroundContact) < 180;
+                return (performance.now() - lastGroundContact) < 220;
             }
 
             // ─────────────────────────────────────
@@ -676,27 +642,27 @@
                     applyLocalControls(dt);
                 }
 
-                Engine.update(engine, 16.67); // ~60fps physics
+                Engine.update(engine, 16.67);
 
                 if (localRagdoll) {
                     checkRespawn();
                 }
 
-                // Send netværksopdatering
+                // Opdater remote ragdoll positioner (statiske kroppe)
+                updateRemoteBodies();
+
                 if (timestamp - lastNetworkSend > NETWORK_INTERVAL) {
                     lastNetworkSend = timestamp;
                     sendNetworkUpdate();
                 }
 
-                // Opdater interpolering for remote spillere
                 updateRemoteInterpolation(timestamp);
-
                 render(timestamp);
             }
 
             function applyLocalControls(dt) {
-                const moveForce = 0.025;
-                const jumpForce = 0.055;
+                const moveForce = 0.018; // reduceret for langsommere bevægelse
+                const jumpForce = 0.08; // øget for bedre hop
                 const torso = localRagdoll.parts.upperTorso;
 
                 // Horisontal bevægelse
@@ -713,19 +679,46 @@
                     lastGroundContact = 0;
                 }
 
-                // Arm-sving med museklik
-                const swingForce = 0.08;
+                // Aktiv ragdoll – prøv at stå op (svag oprejsende kraft)
+                const uprightTorque = 0.003;
+                const torsoAngle = torso.angle;
+                // Normaliser vinkel til [-PI, PI]
+                let targetAngle = 0;
+                let angleDiff = targetAngle - torsoAngle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                Body.setAngularVelocity(torso, torso.angularVelocity + angleDiff * uprightTorque);
+
+                // Arm-sving med dash mod musen
+                const swingForce = 0.12; // stærkere slag
+                const dashForce = 0.04; // lille dash mod slaget
+
                 if (mouseDownLeft && !mouseGrabbing) {
                     swingArmToward(localRagdoll.parts.leftUpperArm, localRagdoll.parts.leftLowerArm, mouseX, mouseY,
                         swingForce);
+                    // Dash lidt mod musen
+                    const dx = mouseX - torso.position.x;
+                    const dy = mouseY - torso.position.y;
+                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                    Body.applyForce(torso, torso.position, {
+                        x: (dx / len) * dashForce,
+                        y: (dy / len) * dashForce * 0.5,
+                    });
                 }
                 if (mouseDownRight) {
                     swingArmToward(localRagdoll.parts.rightUpperArm, localRagdoll.parts.rightLowerArm, mouseX, mouseY,
                         swingForce);
+                    const dx = mouseX - torso.position.x;
+                    const dy = mouseY - torso.position.y;
+                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                    Body.applyForce(torso, torso.position, {
+                        x: (dx / len) * dashForce,
+                        y: (dy / len) * dashForce * 0.5,
+                    });
                 }
 
-                // Lille dæmpning på arme så de ikke flyver evigt
-                const armDamping = 0.92;
+                // Dæmp arme lidt
+                const armDamping = 0.94;
                 [
                     localRagdoll.parts.leftUpperArm,
                     localRagdoll.parts.rightUpperArm,
@@ -744,9 +737,9 @@
                 while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                 const swingDir = Math.sign(angleDiff);
-                const magnitude = Math.min(Math.abs(angleDiff) * 1.5, 1.0);
+                const magnitude = Math.min(Math.abs(angleDiff) * 1.8, 1.2);
                 Body.setAngularVelocity(upperArm, upperArm.angularVelocity + swingDir * force * magnitude);
-                Body.setAngularVelocity(lowerArm, lowerArm.angularVelocity + swingDir * force * magnitude * 0.6);
+                Body.setAngularVelocity(lowerArm, lowerArm.angularVelocity + swingDir * force * magnitude * 0.7);
             }
 
             function checkRespawn() {
@@ -767,8 +760,47 @@
                 }
                 localRagdoll.remove();
                 const sp = getRandomSpawn();
-                localRagdoll = createRagdoll(sp.x, sp.y, localColor, LOCAL_COLLISION_GROUP);
+                localRagdoll = createRagdoll(sp.x, sp.y, localColor, LOCAL_COLLISION_GROUP, true);
                 lastGroundContact = 0;
+            }
+
+            // ─────────────────────────────────────
+            // REMOTE SPILLERE (statiske spøgelseskroppe)
+            // ─────────────────────────────────────
+            const remoteRagdolls = new Map(); // playerId -> { ragdoll, partsData }
+
+            function updateRemoteBodies() {
+                for (const [id, rp] of remotePlayers) {
+                    if (!rp.ragdollPartsData) continue;
+
+                    let ragdoll = remoteRagdolls.get(id);
+                    if (!ragdoll) {
+                        // Opret statisk ragdoll for denne spiller
+                        ragdoll = createRagdoll(0, 0, rp.color, LOCAL_COLLISION_GROUP + 100 + id.hashCode ?
+                            id.hashCode() : Math.random() * 1000, false);
+                        remoteRagdolls.set(id, ragdoll);
+                    }
+
+                    // Opdater positioner på de statiske kroppe
+                    const partsData = rp.ragdollPartsData;
+                    for (const [key, body] of Object.entries(ragdoll.parts)) {
+                        const data = partsData[key];
+                        if (data) {
+                            Body.setPosition(body, { x: data.x, y: data.y });
+                            Body.setAngle(body, data.a);
+                            Body.setVelocity(body, { x: 0, y: 0 });
+                            Body.setAngularVelocity(body, 0);
+                        }
+                    }
+                }
+
+                // Fjern ragdolls for spillere der er væk
+                for (const [id, ragdoll] of remoteRagdolls) {
+                    if (!remotePlayers.has(id)) {
+                        ragdoll.remove();
+                        remoteRagdolls.delete(id);
+                    }
+                }
             }
 
             // ─────────────────────────────────────
@@ -804,8 +836,12 @@
                 ws.onclose = () => {
                     console.log('Forbindelse mistet, genforbinder...');
                     setConnectionStatus(false);
-                    // Ryd remote spillere
                     remotePlayers.clear();
+                    // Ryd remote ragdolls
+                    for (const [id, ragdoll] of remoteRagdolls) {
+                        ragdoll.remove();
+                    }
+                    remoteRagdolls.clear();
                     setTimeout(connectWebSocket, 2000);
                 };
 
@@ -837,14 +873,12 @@
                     case 'init':
                         localPlayerId = msg.id;
                         localColor = msg.color;
-                        // Opdater lokal ragdoll farve (visuelt)
                         if (localRagdoll) {
                             localRagdoll.color = localColor;
                         }
                         console.log('Init modtaget:', msg.id, msg.color);
                         updatePlayerCount();
                         break;
-
                     case 'playerJoined':
                         if (msg.id !== localPlayerId) {
                             remotePlayers.set(msg.id, {
@@ -857,13 +891,17 @@
                             updatePlayerCount();
                         }
                         break;
-
                     case 'playerLeft':
                         remotePlayers.delete(msg.id);
+                        // Ryd remote ragdoll
+                        const ragdoll = remoteRagdolls.get(msg.id);
+                        if (ragdoll) {
+                            ragdoll.remove();
+                            remoteRagdolls.delete(msg.id);
+                        }
                         console.log('Spiller gik:', msg.id);
                         updatePlayerCount();
                         break;
-
                     case 'playerUpdate':
                         if (msg.id !== localPlayerId && remotePlayers.has(msg.id)) {
                             const rp = remotePlayers.get(msg.id);
@@ -871,16 +909,13 @@
                                 timestamp: performance.now(),
                                 parts: msg.parts,
                             });
-                            // Behold kun de seneste 3 states
                             if (rp.states.length > 3) {
                                 rp.states.shift();
                             }
                             rp.lastUpdate = performance.now();
                         }
                         break;
-
                     case 'hit':
-                        // En anden spiller har ramt os
                         if (msg.targetId === localPlayerId && localRagdoll) {
                             applyKnockback(msg.impulse);
                         }
@@ -892,14 +927,13 @@
                 if (!localRagdoll) return;
                 const torso = localRagdoll.parts.upperTorso;
                 Body.applyForce(torso, torso.position, {
-                    x: impulse.x * 0.15,
-                    y: impulse.y * 0.15,
+                    x: impulse.x * 0.25,
+                    y: impulse.y * 0.25,
                 });
-                // Ryst hele ragdollen
                 for (const body of localRagdoll.allBodies) {
                     Body.setVelocity(body, {
-                        x: body.velocity.x + impulse.x * 0.08,
-                        y: body.velocity.y + impulse.y * 0.08,
+                        x: body.velocity.x + impulse.x * 0.12,
+                        y: body.velocity.y + impulse.y * 0.12,
                     });
                 }
             }
@@ -924,7 +958,6 @@
                     parts: partsData,
                 }));
 
-                // Tjek for hits på remote spillere
                 checkHitsOnRemotePlayers();
             }
 
@@ -933,7 +966,6 @@
 
                 const leftHand = localRagdoll.parts.leftLowerArm;
                 const rightHand = localRagdoll.parts.rightLowerArm;
-
                 const hands = [
                     { body: leftHand, pos: getHandWorldPos(leftHand, -1) },
                     { body: rightHand, pos: getHandWorldPos(rightHand, 1) },
@@ -942,7 +974,7 @@
                 for (const hand of hands) {
                     const handSpeed = Math.abs(hand.body.angularVelocity) + Math.abs(hand.body.velocity.x) + Math.abs(hand
                         .body.velocity.y);
-                    if (handSpeed < 6) continue; // Ikke hurtigt nok til at gøre skade
+                    if (handSpeed < 5) continue;
 
                     for (const [remoteId, rp] of remotePlayers) {
                         if (!rp.ragdollPartsData) continue;
@@ -952,7 +984,7 @@
 
                         const targets = [
                             { x: remoteHead.x, y: remoteHead.y, radius: 18 },
-                            { x: remoteTorso.x, y: remoteTorso.y, radius: 25 },
+                            { x: remoteTorso.x, y: remoteTorso.y, radius: 28 },
                         ];
 
                         for (const target of targets) {
@@ -960,17 +992,15 @@
                             const dy = hand.pos.y - target.y;
                             const dist = Math.sqrt(dx * dx + dy * dy);
                             if (dist < target.radius + 15) {
-                                // HIT!
                                 const impulse = {
-                                    x: hand.body.velocity.x * 3 + (dx / (dist || 1)) * 8,
-                                    y: hand.body.velocity.y * 3 + (dy / (dist || 1)) * 8 - 5,
+                                    x: hand.body.velocity.x * 4 + (dx / (dist || 1)) * 10,
+                                    y: hand.body.velocity.y * 4 + (dy / (dist || 1)) * 10 - 6,
                                 };
                                 ws.send(JSON.stringify({
                                     type: 'hit',
                                     targetId: remoteId,
                                     impulse,
                                 }));
-                                // Kun ét hit pr. frame pr. hånd
                                 break;
                             }
                         }
@@ -980,7 +1010,7 @@
 
             function getHandWorldPos(arm, side) {
                 const angle = arm.angle;
-                const halfLen = 13; // halv længde af underarm
+                const halfLen = 13;
                 return {
                     x: arm.position.x + Math.cos(angle) * halfLen * side * 0.7 + Math.sin(angle) * halfLen,
                     y: arm.position.y + Math.sin(angle) * halfLen * side * 0.7 - Math.cos(angle) * halfLen,
@@ -991,7 +1021,6 @@
                 for (const [id, rp] of remotePlayers) {
                     if (rp.states.length >= 2) {
                         const now = timestamp;
-                        // Find de to states der omgiver nu
                         let s0 = rp.states[0];
                         let s1 = rp.states[rp.states.length - 1];
                         for (let i = 0; i < rp.states.length - 1; i++) {
@@ -1006,13 +1035,11 @@
                         if (tDiff > 0) {
                             alpha = Math.max(0, Math.min(1, (now - s0.timestamp) / tDiff));
                         }
-
                         const interpParts = {};
                         for (const key of Object.keys(s1.parts)) {
                             const p0 = s0.parts[key];
                             const p1 = s1.parts[key];
                             if (p0 && p1) {
-                                // Interpoler vinkel korrekt (korteste vej)
                                 let a0 = p0.a;
                                 let a1 = p1.a;
                                 let angleDiff = a1 - a0;
@@ -1040,7 +1067,6 @@
             function render(timestamp) {
                 ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-                // Baggrund
                 const bgGrad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
                 bgGrad.addColorStop(0, '#1a2a3d');
                 bgGrad.addColorStop(0.5, '#1e2e42');
@@ -1048,7 +1074,7 @@
                 ctx.fillStyle = bgGrad;
                 ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-                // Gitter i baggrunden
+                // Gitter
                 ctx.strokeStyle = 'rgba(255,255,255,0.02)';
                 ctx.lineWidth = 1;
                 const gridSize = 60;
@@ -1065,14 +1091,12 @@
                     ctx.stroke();
                 }
 
-                // Platforme
                 renderPlatforms();
 
-                // Remote spillere
+                // Remote spillere (renderes fra deres interpolerede data, ikke de statiske kroppe)
                 for (const [id, rp] of remotePlayers) {
                     if (rp.ragdollPartsData) {
-                        renderRagdollFromData(rp.ragdollPartsData, rp.color, 0.65);
-                        // Navn over hovedet
+                        renderRagdollFromData(rp.ragdollPartsData, rp.color, 0.7);
                         const headData = rp.ragdollPartsData.head;
                         if (headData) {
                             ctx.fillStyle = rp.color;
@@ -1086,22 +1110,19 @@
                 // Lokal spiller
                 if (localRagdoll) {
                     renderRagdollBodies(localRagdoll, localColor, 1.0);
-                    // Markør over hovedet
                     const headPos = localRagdoll.parts.head.position;
                     ctx.fillStyle = '#ffffff';
                     ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText('DIG', headPos.x, headPos.y - 28);
-
-                    // Highlight på lokal spiller
-                    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
                     ctx.lineWidth = 3;
                     ctx.beginPath();
-                    ctx.arc(headPos.x, headPos.y, 30, 0, Math.PI * 2);
+                    ctx.arc(headPos.x, headPos.y, 32, 0, Math.PI * 2);
                     ctx.stroke();
                 }
 
-                // Dødszone-indikator
+                // Dødszone
                 const deathGrad = ctx.createLinearGradient(0, RESPAWN_Y_THRESHOLD - 30, 0, RESPAWN_Y_THRESHOLD + 20);
                 deathGrad.addColorStop(0, 'rgba(231,76,60,0)');
                 deathGrad.addColorStop(0.5, 'rgba(231,76,60,0.15)');
@@ -1132,8 +1153,6 @@
                     ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
-
-                    // Lys kant på toppen
                     const topY = Math.min(...verts.map(v => v.y));
                     const minX = Math.min(...verts.map(v => v.x));
                     const maxX = Math.max(...verts.map(v => v.x));
@@ -1144,8 +1163,6 @@
                     ctx.lineTo(maxX, topY);
                     ctx.stroke();
                 }
-
-                // Bund
                 ctx.fillStyle = '#2c3d50';
                 ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GROUND_THICKNESS);
                 ctx.fillStyle = '#3d5068';
@@ -1161,7 +1178,6 @@
                     'lowerTorso', 'leftLowerArm', 'rightLowerArm', 'leftUpperArm', 'rightUpperArm',
                     'upperTorso', 'head',
                 ];
-
                 const dims = {
                     head: { type: 'circle', r: 17 },
                     upperTorso: { type: 'rect', w: 28, h: 38 },
@@ -1175,7 +1191,6 @@
                     leftLowerLeg: { type: 'rect', w: 11, h: 30 },
                     rightLowerLeg: { type: 'rect', w: 11, h: 30 },
                 };
-
                 const darkerColor = darkenColor(color, 0.7);
                 const lighterColor = lightenColor(color, 0.25);
 
@@ -1183,14 +1198,11 @@
                     const data = partsData[key];
                     const dim = dims[key];
                     if (!data || !dim) continue;
-
                     ctx.save();
                     ctx.globalAlpha = alpha;
                     ctx.translate(data.x, data.y);
                     ctx.rotate(data.a);
-
                     if (dim.type === 'circle') {
-                        // Hoved
                         const headGrad = ctx.createRadialGradient(-3, -4, dim.r * 0.2, 0, 0, dim.r);
                         headGrad.addColorStop(0, lighterColor);
                         headGrad.addColorStop(1, darkerColor);
@@ -1201,7 +1213,6 @@
                         ctx.strokeStyle = 'rgba(0,0,0,0.5)';
                         ctx.lineWidth = 2.5;
                         ctx.stroke();
-                        // Øjne
                         ctx.fillStyle = '#fff';
                         ctx.beginPath();
                         ctx.arc(-5, -3, 5, 0, Math.PI * 2);
@@ -1216,7 +1227,6 @@
                         ctx.beginPath();
                         ctx.arc(6, -3, 2.2, 0, Math.PI * 2);
                         ctx.fill();
-                        // Mund
                         ctx.strokeStyle = '#333';
                         ctx.lineWidth = 1.5;
                         ctx.beginPath();
@@ -1232,7 +1242,6 @@
                         ctx.strokeStyle = 'rgba(0,0,0,0.45)';
                         ctx.lineWidth = 2;
                         ctx.strokeRect(-dim.w / 2, -dim.h / 2, dim.w, dim.h);
-                        // Rundede hjørner effekt
                         ctx.fillStyle = lighterColor;
                         ctx.beginPath();
                         ctx.arc(-dim.w / 2 + 3, -dim.h / 2 + 3, 3, 0, Math.PI * 2);
@@ -1241,7 +1250,6 @@
                         ctx.arc(dim.w / 2 - 3, -dim.h / 2 + 3, 3, 0, Math.PI * 2);
                         ctx.fill();
                     }
-
                     ctx.restore();
                 }
             }
@@ -1278,31 +1286,26 @@
                 return `rgb(${lr},${lg},${lb})`;
             }
 
-            // ─────────────────────────────────────
-            // RENS UDGÅEDE REMOTE SPILLERE
-            // ─────────────────────────────────────
+            // Rens timeoutede spillere
             setInterval(() => {
                 const now = performance.now();
                 for (const [id, rp] of remotePlayers) {
                     if (now - rp.lastUpdate > 8000) {
                         remotePlayers.delete(id);
+                        const ragdoll = remoteRagdolls.get(id);
+                        if (ragdoll) {
+                            ragdoll.remove();
+                            remoteRagdolls.delete(id);
+                        }
                         updatePlayerCount();
-                        console.log('Timeout - fjerner spiller:', id);
                     }
                 }
             }, 3000);
 
-            // ─────────────────────────────────────
-            // START
-            // ─────────────────────────────────────
             connectWebSocket();
             requestAnimationFrame(gameLoop);
 
-            console.log('🎮 Ragdoll Fight klar!');
-            console.log('   WASD = bevægelse | Mellemrum = hop');
-            console.log('   Venstre klik = slå | Højre klik = slå');
-            console.log('   Træk i ragdoll med musen for at kaste dig selv');
-            console.log('   👥 Multiplayer via WebSocket');
+            console.log('🎮 Ragdoll Fight 2.0 klar!');
         })();
     </script>
 </body>
