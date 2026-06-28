@@ -145,7 +145,7 @@
             const GROUND_Y = 640;
             const GROUND_THICKNESS = 80;
             const SWING_COOLDOWN_MS = 350;
-            const SOFT_PUSH_FORCE = 0.5; // meget blid manuel kollision
+            const LOCAL_COLLISION_GROUP = -1; // gruppe der forhindrer kollision med fjender
 
             const PLAYER_COLORS = [
                 '#4A90D9', '#E74C3C', '#2ECC71', '#F39C12',
@@ -167,7 +167,7 @@
             // ─────────────────────────────────────
             // MATTER.JS OPSÆTNING
             // ─────────────────────────────────────
-            const { Engine, World, Bodies, Body, Constraint, Events, Query } = Matter;
+            const { Engine, World, Bodies, Body, Constraint, Events } = Matter;
 
             const engine = Engine.create();
             engine.gravity.y = 1.2;
@@ -242,19 +242,17 @@
                 const lowerTorsoY = upperTorsoY + upperTorsoH / 2 + lowerTorsoH / 2;
                 const shoulderY = headY + headRadius + 4;
 
-                // Lokale kroppe dynamiske, remote kroppe er SENSORER (ingen fysisk respons)
+                // Alle remote‑kroppe får SAMME kollisionsgruppe som lokal = -1 → INGEN berøring
                 const bodyOptions = isLocal ? {
                     restitution: 0.2,
                     friction: 0.5,
                     collisionFilter: { group: collisionGroup },
                     isStatic: false,
-                    isSensor: false,
                 } : {
-                    isStatic: false,
-                    isSensor: true,
+                    isStatic: true,
                     restitution: 0,
                     friction: 0,
-                    collisionFilter: { group: collisionGroup },
+                    collisionFilter: { group: collisionGroup }, // vigtigt: samme gruppe = ingen kollision
                 };
 
                 parts.head = Bodies.circle(spawnX, headY, headRadius, { ...bodyOptions, label: 'head', density: 0.002 });
@@ -314,7 +312,6 @@
             // ─────────────────────────────────────
             let localPlayerId = null;
             let localColor = PLAYER_COLORS[0];
-            const LOCAL_COLLISION_GROUP = -1;
 
             const spawn = getRandomSpawn();
             let localRagdoll = createRagdoll(spawn.x, spawn.y, localColor, LOCAL_COLLISION_GROUP, true);
@@ -434,11 +431,7 @@
                 const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.1);
                 lastFrameTime = timestamp;
 
-                if (localRagdoll) {
-                    applyLocalControls(dt);
-                    applySoftCollision();   // ← NYT MANUELT KOLLISIONSSYSTEM
-                }
-
+                if (localRagdoll) applyLocalControls(dt);
                 Engine.update(engine, 16.67);
 
                 if (localRagdoll) checkRespawn();
@@ -455,7 +448,7 @@
 
             function applyLocalControls(dt) {
                 const moveForce = 0.018;
-                const jumpForce = 0.30;
+                const jumpForce = 0.30;   // præcis som ønsket
                 const torso = localRagdoll.parts.upperTorso;
 
                 if (keys['arrowleft'] || keys['a'] || keys['keya']) Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
@@ -491,51 +484,12 @@
                     Body.setAngularVelocity(legPart, legPart.angularVelocity + legDiff * legTorque);
                 }
 
-                // Dæmp arme og alle kroppe let for at undgå voldsomme sving
-                const damping = 0.97;
-                for (const body of localRagdoll.allBodies) {
-                    Body.setVelocity(body, {
-                        x: body.velocity.x * damping,
-                        y: body.velocity.y * damping,
-                    });
-                    Body.setAngularVelocity(body, body.angularVelocity * damping);
-                }
-            }
-
-            // ★★★★★ NYT MANUELT KOLLISIONSSYSTEM ★★★★★
-            function applySoftCollision() {
-                if (!localRagdoll) return;
-                const remoteBodies = [];
-                for (const ragdoll of remoteRagdolls.values()) {
-                    remoteBodies.push(...ragdoll.allBodies);
-                }
-                if (remoteBodies.length === 0) return;
-
-                for (const localBody of localRagdoll.allBodies) {
-                    const collisions = Query.collides(localBody, remoteBodies);
-                    for (const collision of collisions) {
-                        const remoteBody = collision.bodyB;
-                        // Retning fra remote mod lokal
-                        const dx = localBody.position.x - remoteBody.position.x;
-                        const dy = localBody.position.y - remoteBody.position.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                        const nx = dx / dist;
-                        const ny = dy / dist;
-                        // Meget blød kraft væk fra remote
-                        Body.applyForce(localBody, localBody.position, {
-                            x: nx * SOFT_PUSH_FORCE,
-                            y: ny * SOFT_PUSH_FORCE,
-                        });
-                        // Klip hastighed for ekstra sikkerhed
-                        const speed = Math.sqrt(localBody.velocity.x ** 2 + localBody.velocity.y ** 2);
-                        if (speed > 15) {
-                            Body.setVelocity(localBody, {
-                                x: localBody.velocity.x * 0.3,
-                                y: localBody.velocity.y * 0.3,
-                            });
-                        }
-                    }
-                }
+                // Let dæmpning for at undgå overdreven rotation
+                const armDamping = 0.94;
+                [
+                    localRagdoll.parts.leftUpperArm, localRagdoll.parts.rightUpperArm,
+                    localRagdoll.parts.leftLowerArm, localRagdoll.parts.rightLowerArm,
+                ].forEach(arm => Body.setAngularVelocity(arm, arm.angularVelocity * armDamping));
             }
 
             function checkRespawn() {
@@ -554,7 +508,7 @@
             }
 
             // ─────────────────────────────────────
-            // REMOTE SPILLERE (sensorer)
+            // REMOTE SPILLERE (ingen fysisk kontakt)
             // ─────────────────────────────────────
             const remoteRagdolls = new Map();
 
@@ -563,7 +517,7 @@
                     if (!rp.ragdollPartsData) continue;
                     let ragdoll = remoteRagdolls.get(id);
                     if (!ragdoll) {
-                        ragdoll = createRagdoll(0, 0, rp.color, LOCAL_COLLISION_GROUP + 100 + Math.floor(Math.random() * 1000), false);
+                        ragdoll = createRagdoll(0, 0, rp.color, LOCAL_COLLISION_GROUP, false); // false = remote
                         remoteRagdolls.set(id, ragdoll);
                     }
                     const partsData = rp.ragdollPartsData;
@@ -874,7 +828,7 @@
 
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-            console.log('🎮 Ragdoll Fight – NYT kollisionssystem: sensorer + blød manuel push');
+            console.log('🎮 Ragdoll Fight – Fling 100% fjernet (ingen kollision mellem spillere)');
         })();
     </script>
 </body>
