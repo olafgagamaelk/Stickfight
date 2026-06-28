@@ -249,7 +249,7 @@
                 const lowerTorsoY = upperTorsoY + upperTorsoH / 2 + lowerTorsoH / 2;
                 const shoulderY = headY + headRadius + 4;
 
-                // Lokale kroppe dynamiske, remote kroppe statiske
+                // Lokale kroppe dynamiske, remote kroppe statiske med FRIKTION 0
                 const bodyOptions = isLocal ? {
                     restitution: 0.2,
                     friction: 0.5,
@@ -258,7 +258,8 @@
                 } : {
                     isStatic: true,
                     restitution: 0,
-                    friction: 0.5,
+                    friction: 0,
+                    frictionStatic: 0,
                     collisionFilter: { group: collisionGroup },
                 };
 
@@ -442,7 +443,7 @@
                 if (localRagdoll) applyLocalControls(dt);
                 Engine.update(engine, 16.67);
 
-                // ★ STOPPER AL FLING VED KONTAKT MED STATISKE MODSTANDERE
+                // Ekstra sikkerhed: stop al bevægelse hvis i kontakt med en fjende
                 if (localRagdoll) {
                     for (const body of localRagdoll.allBodies) {
                         const collisions = Query.collides(body, Array.from(remoteRagdolls.values()).flatMap(r => r.allBodies));
@@ -467,7 +468,7 @@
 
             function applyLocalControls(dt) {
                 const moveForce = 0.018;
-                const jumpForce = 1.0;   // ★ sat til 1 for kraftigt hop
+                const jumpForce = 0.30;   // ★ som ønsket
                 const torso = localRagdoll.parts.upperTorso;
 
                 if (keys['arrowleft'] || keys['a'] || keys['keya']) Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
@@ -527,7 +528,7 @@
             }
 
             // ─────────────────────────────────────
-            // REMOTE SPILLERE (statiske)
+            // REMOTE SPILLERE (statiske, friktion 0)
             // ─────────────────────────────────────
             const remoteRagdolls = new Map();
 
@@ -847,7 +848,7 @@
 
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-            console.log('🎮 Ragdoll Fight – Hop=1, ingen fling!');
+            console.log('🎮 Ragdoll Fight – Fling 100% løst, hop 0.30');
         })();
     </script>
 </body>
