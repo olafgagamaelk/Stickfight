@@ -249,42 +249,41 @@
                 const lowerTorsoY = upperTorsoY + upperTorsoH / 2 + lowerTorsoH / 2;
                 const shoulderY = headY + headRadius + 4;
 
-                // Lokale kroppe er dynamiske, remote kroppe er sensorer (ingen fysisk kollision)
+                // Remote kroppe: tunge, dynamiske, restitution = 0
                 const bodyOptions = isLocal ? {
                     restitution: 0.2,
                     friction: 0.5,
                     collisionFilter: { group: collisionGroup },
                     isStatic: false,
-                    isSensor: false,
+                    density: 0.002, // normal
                 } : {
-                    // Sensor: kan ikke skubbe eller flytte sig, genererer ikke fysisk respons
-                    isStatic: false,
-                    isSensor: true,
                     restitution: 0,
                     friction: 0,
                     collisionFilter: { group: collisionGroup },
+                    isStatic: false,
+                    density: 0.08, // meget tung
                 };
 
-                parts.head = Bodies.circle(spawnX, headY, headRadius, { ...bodyOptions, label: 'head', density: isLocal ? 0.002 : 0.001 });
-                parts.upperTorso = Bodies.rectangle(spawnX, upperTorsoY, upperTorsoW, upperTorsoH, { ...bodyOptions, label: 'upperTorso', density: isLocal ? 0.003 : 0.001 });
-                parts.lowerTorso = Bodies.rectangle(spawnX, lowerTorsoY, lowerTorsoW, lowerTorsoH, { ...bodyOptions, label: 'lowerTorso', density: isLocal ? 0.0025 : 0.001 });
+                parts.head = Bodies.circle(spawnX, headY, headRadius, { ...bodyOptions, label: 'head' });
+                parts.upperTorso = Bodies.rectangle(spawnX, upperTorsoY, upperTorsoW, upperTorsoH, { ...bodyOptions, label: 'upperTorso' });
+                parts.lowerTorso = Bodies.rectangle(spawnX, lowerTorsoY, lowerTorsoW, lowerTorsoH, { ...bodyOptions, label: 'lowerTorso' });
 
                 const armOffsetX = upperTorsoW / 2 + upperArmW / 2 - 1;
-                parts.leftUpperArm = Bodies.rectangle(spawnX - armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, { ...bodyOptions, label: 'leftUpperArm', density: isLocal ? 0.0015 : 0.001 });
-                parts.rightUpperArm = Bodies.rectangle(spawnX + armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, { ...bodyOptions, label: 'rightUpperArm', density: isLocal ? 0.0015 : 0.001 });
+                parts.leftUpperArm = Bodies.rectangle(spawnX - armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, { ...bodyOptions, label: 'leftUpperArm' });
+                parts.rightUpperArm = Bodies.rectangle(spawnX + armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, { ...bodyOptions, label: 'rightUpperArm' });
 
                 const lowerArmTopY = shoulderY + upperArmH;
-                parts.leftLowerArm = Bodies.rectangle(spawnX - armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW, lowerArmH, { ...bodyOptions, label: 'leftLowerArm', density: isLocal ? 0.0012 : 0.001 });
-                parts.rightLowerArm = Bodies.rectangle(spawnX + armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW, lowerArmH, { ...bodyOptions, label: 'rightLowerArm', density: isLocal ? 0.0012 : 0.001 });
+                parts.leftLowerArm = Bodies.rectangle(spawnX - armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW, lowerArmH, { ...bodyOptions, label: 'leftLowerArm' });
+                parts.rightLowerArm = Bodies.rectangle(spawnX + armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW, lowerArmH, { ...bodyOptions, label: 'rightLowerArm' });
 
                 const legOffsetX = lowerTorsoW / 3;
                 const upperLegTopY = lowerTorsoY + lowerTorsoH / 2;
-                parts.leftUpperLeg = Bodies.rectangle(spawnX - legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH, { ...bodyOptions, label: 'leftUpperLeg', density: isLocal ? 0.002 : 0.001 });
-                parts.rightUpperLeg = Bodies.rectangle(spawnX + legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH, { ...bodyOptions, label: 'rightUpperLeg', density: isLocal ? 0.002 : 0.001 });
+                parts.leftUpperLeg = Bodies.rectangle(spawnX - legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH, { ...bodyOptions, label: 'leftUpperLeg' });
+                parts.rightUpperLeg = Bodies.rectangle(spawnX + legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH, { ...bodyOptions, label: 'rightUpperLeg' });
 
                 const lowerLegTopY = upperLegTopY + upperLegH;
-                parts.leftLowerLeg = Bodies.rectangle(spawnX - legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW, lowerLegH, { ...bodyOptions, label: 'leftLowerLeg', density: isLocal ? 0.0018 : 0.001 });
-                parts.rightLowerLeg = Bodies.rectangle(spawnX + legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW, lowerLegH, { ...bodyOptions, label: 'rightLowerLeg', density: isLocal ? 0.0018 : 0.001 });
+                parts.leftLowerLeg = Bodies.rectangle(spawnX - legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW, lowerLegH, { ...bodyOptions, label: 'leftLowerLeg' });
+                parts.rightLowerLeg = Bodies.rectangle(spawnX + legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW, lowerLegH, { ...bodyOptions, label: 'rightLowerLeg' });
 
                 if (isLocal) {
                     const stiff = 0.6;
@@ -305,15 +304,11 @@
                 World.add(world, allBodies);
                 constraints.forEach(c => World.add(world, c));
 
-                return {
-                    parts,
-                    constraints,
-                    color,
-                    allBodies,
+                return { parts, constraints, color, allBodies, isLocal,
                     remove() {
                         constraints.forEach(c => World.remove(world, c));
                         allBodies.forEach(b => World.remove(world, b));
-                    },
+                    }
                 };
             }
 
@@ -425,7 +420,32 @@
                         lastGroundContact = performance.now();
                     }
                 }
+
+                // Kollision med remote spillere – dæmp lokal hastighed
+                if (localRagdoll) {
+                    const localBodies = new Set(localRagdoll.allBodies);
+                    const isLocalInvolved = localBodies.has(pair.bodyA) || localBodies.has(pair.bodyB);
+                    const otherBody = isLocalInvolved ? (localBodies.has(pair.bodyA) ? pair.bodyB : pair.bodyA) : null;
+                    if (otherBody && isRemoteBody(otherBody)) {
+                        // Dæmp lokal body
+                        const localBody = localBodies.has(pair.bodyA) ? pair.bodyA : pair.bodyB;
+                        const speed = Math.sqrt(localBody.velocity.x ** 2 + localBody.velocity.y ** 2);
+                        if (speed > 8) {
+                            Body.setVelocity(localBody, {
+                                x: localBody.velocity.x * 0.2,
+                                y: localBody.velocity.y * 0.2,
+                            });
+                        }
+                    }
+                }
             });
+
+            function isRemoteBody(body) {
+                for (const ragdoll of remoteRagdolls.values()) {
+                    if (ragdoll.allBodies.includes(body)) return true;
+                }
+                return false;
+            }
 
             function isGrounded() {
                 return (performance.now() - lastGroundContact) < 280;
@@ -458,7 +478,7 @@
 
             function applyLocalControls(dt) {
                 const moveForce = 0.018;
-                const jumpForce = 0.13;   // stærkere hop
+                const jumpForce = 0.13;
                 const torso = localRagdoll.parts.upperTorso;
 
                 if (keys['arrowleft'] || keys['a'] || keys['keya']) Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
@@ -468,7 +488,7 @@
                     lastGroundContact = 0;
                 }
 
-                // Aktiv ragdoll – stærk oprejsning (0.3)
+                // Aktiv ragdoll – stærk oprejsning
                 const uprightTorque = 0.3;
                 const torsoAngle = torso.angle;
                 let diff = 0 - torsoAngle;
@@ -518,7 +538,7 @@
             }
 
             // ─────────────────────────────────────
-            // REMOTE SPILLERE (sensorer – ingen fysisk kontakt)
+            // REMOTE SPILLERE (tunge, dynamiske)
             // ─────────────────────────────────────
             const remoteRagdolls = new Map();
 
@@ -536,7 +556,6 @@
                         if (data) {
                             Body.setPosition(body, { x: data.x, y: data.y });
                             Body.setAngle(body, data.a);
-                            // Sensorer har ingen hastighed/impuls
                             Body.setVelocity(body, { x: 0, y: 0 });
                             Body.setAngularVelocity(body, 0);
                         }
@@ -841,7 +860,7 @@
 
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-            console.log('🎮 Ragdoll Fight – Sensor-modstandere, stærkt hop');
+            console.log('🎮 Ragdoll Fight – Kollision uden at flyve');
         })();
     </script>
 </body>
