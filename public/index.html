@@ -134,7 +134,7 @@
         <div id="controlsHint">
             <span>WASD / Piletaster</span> = Bevæg · <span>Mellemrum</span> = Hop ·
             <span>Venstre klik</span> = Slå venstre · <span>Højre klik</span> = Slå højre ·
-            <span>Nedkøling</span> efter slag
+            <span>Cooldown</span> på slag
         </div>
     </div>
 
@@ -152,8 +152,6 @@
             const RESPAWN_Y_THRESHOLD = 780;
             const GROUND_Y = 640;
             const GROUND_THICKNESS = 80;
-
-            // Slag cooldown i ms
             const SWING_COOLDOWN_MS = 350;
 
             const PLAYER_COLORS = [
@@ -184,7 +182,7 @@
             const world = engine.world;
 
             // ─────────────────────────────────────
-            // PLATFORME (statiske)
+            // PLATFORME
             // ─────────────────────────────────────
             const platforms = [];
 
@@ -200,24 +198,9 @@
             }
 
             const ground = createPlatform(GAME_WIDTH / 2, GROUND_Y + GROUND_THICKNESS / 2, GAME_WIDTH, GROUND_THICKNESS);
-            const leftWall = Bodies.rectangle(-30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, {
-                isStatic: true,
-                friction: 0.3,
-                restitution: 0.2,
-                label: 'wall',
-            });
-            const rightWall = Bodies.rectangle(GAME_WIDTH + 30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, {
-                isStatic: true,
-                friction: 0.3,
-                restitution: 0.2,
-                label: 'wall',
-            });
-            const ceiling = Bodies.rectangle(GAME_WIDTH / 2, -30, GAME_WIDTH, 60, {
-                isStatic: true,
-                friction: 0.3,
-                restitution: 0.3,
-                label: 'wall',
-            });
+            const leftWall = Bodies.rectangle(-30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, { isStatic: true, friction: 0.3, restitution: 0.2, label: 'wall' });
+            const rightWall = Bodies.rectangle(GAME_WIDTH + 30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, { isStatic: true, friction: 0.3, restitution: 0.2, label: 'wall' });
+            const ceiling = Bodies.rectangle(GAME_WIDTH / 2, -30, GAME_WIDTH, 60, { isStatic: true, friction: 0.3, restitution: 0.3, label: 'wall' });
 
             const plat1 = createPlatform(280, 470, 190, 18);
             const plat2 = createPlatform(680, 410, 170, 18);
@@ -232,13 +215,8 @@
             // SPAWN PUNKTER
             // ─────────────────────────────────────
             const spawnPoints = [
-                { x: 350, y: 160 },
-                { x: 600, y: 140 },
-                { x: 850, y: 160 },
-                { x: 200, y: 200 },
-                { x: 1000, y: 200 },
-                { x: 500, y: 120 },
-                { x: 700, y: 130 },
+                { x: 350, y: 160 }, { x: 600, y: 140 }, { x: 850, y: 160 },
+                { x: 200, y: 200 }, { x: 1000, y: 200 }, { x: 500, y: 120 }, { x: 700, y: 130 },
             ];
 
             function getRandomSpawn() {
@@ -271,82 +249,43 @@
                 const lowerTorsoY = upperTorsoY + upperTorsoH / 2 + lowerTorsoH / 2;
                 const shoulderY = headY + headRadius + 4;
 
-                const bodyOptions = {
+                // Vigtigt: remote kroppe har restitution=0 for at undgå voldsomme bounce
+                const bodyOptions = isLocal ? {
                     restitution: 0.2,
                     friction: 0.5,
                     collisionFilter: { group: collisionGroup },
-                    isStatic: !isLocal,
+                    isStatic: false,
+                } : {
+                    restitution: 0,
+                    friction: 0.2,
+                    collisionFilter: { group: collisionGroup },
+                    isStatic: true,
                 };
 
-                parts.head = Bodies.circle(spawnX, headY, headRadius, {
-                    ...bodyOptions,
-                    label: 'head',
-                    density: isLocal ? 0.002 : 0.001,
-                });
-                parts.upperTorso = Bodies.rectangle(spawnX, upperTorsoY, upperTorsoW, upperTorsoH, {
-                    ...bodyOptions,
-                    label: 'upperTorso',
-                    density: isLocal ? 0.003 : 0.001,
-                });
-                parts.lowerTorso = Bodies.rectangle(spawnX, lowerTorsoY, lowerTorsoW, lowerTorsoH, {
-                    ...bodyOptions,
-                    label: 'lowerTorso',
-                    density: isLocal ? 0.0025 : 0.001,
-                });
+                parts.head = Bodies.circle(spawnX, headY, headRadius, { ...bodyOptions, label: 'head', density: isLocal ? 0.002 : 0.001 });
+                parts.upperTorso = Bodies.rectangle(spawnX, upperTorsoY, upperTorsoW, upperTorsoH, { ...bodyOptions, label: 'upperTorso', density: isLocal ? 0.003 : 0.001 });
+                parts.lowerTorso = Bodies.rectangle(spawnX, lowerTorsoY, lowerTorsoW, lowerTorsoH, { ...bodyOptions, label: 'lowerTorso', density: isLocal ? 0.0025 : 0.001 });
 
                 const armOffsetX = upperTorsoW / 2 + upperArmW / 2 - 1;
-                parts.leftUpperArm = Bodies.rectangle(spawnX - armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, {
-                    ...bodyOptions,
-                    label: 'leftUpperArm',
-                    density: isLocal ? 0.0015 : 0.001,
-                });
-                parts.rightUpperArm = Bodies.rectangle(spawnX + armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, {
-                    ...bodyOptions,
-                    label: 'rightUpperArm',
-                    density: isLocal ? 0.0015 : 0.001,
-                });
+                parts.leftUpperArm = Bodies.rectangle(spawnX - armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, { ...bodyOptions, label: 'leftUpperArm', density: isLocal ? 0.0015 : 0.001 });
+                parts.rightUpperArm = Bodies.rectangle(spawnX + armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, { ...bodyOptions, label: 'rightUpperArm', density: isLocal ? 0.0015 : 0.001 });
 
                 const lowerArmTopY = shoulderY + upperArmH;
-                parts.leftLowerArm = Bodies.rectangle(spawnX - armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW, lowerArmH, {
-                    ...bodyOptions,
-                    label: 'leftLowerArm',
-                    density: isLocal ? 0.0012 : 0.001,
-                });
-                parts.rightLowerArm = Bodies.rectangle(spawnX + armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW, lowerArmH, {
-                    ...bodyOptions,
-                    label: 'rightLowerArm',
-                    density: isLocal ? 0.0012 : 0.001,
-                });
+                parts.leftLowerArm = Bodies.rectangle(spawnX - armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW, lowerArmH, { ...bodyOptions, label: 'leftLowerArm', density: isLocal ? 0.0012 : 0.001 });
+                parts.rightLowerArm = Bodies.rectangle(spawnX + armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW, lowerArmH, { ...bodyOptions, label: 'rightLowerArm', density: isLocal ? 0.0012 : 0.001 });
 
                 const legOffsetX = lowerTorsoW / 3;
                 const upperLegTopY = lowerTorsoY + lowerTorsoH / 2;
-                parts.leftUpperLeg = Bodies.rectangle(spawnX - legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH, {
-                    ...bodyOptions,
-                    label: 'leftUpperLeg',
-                    density: isLocal ? 0.002 : 0.001,
-                });
-                parts.rightUpperLeg = Bodies.rectangle(spawnX + legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH, {
-                    ...bodyOptions,
-                    label: 'rightUpperLeg',
-                    density: isLocal ? 0.002 : 0.001,
-                });
+                parts.leftUpperLeg = Bodies.rectangle(spawnX - legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH, { ...bodyOptions, label: 'leftUpperLeg', density: isLocal ? 0.002 : 0.001 });
+                parts.rightUpperLeg = Bodies.rectangle(spawnX + legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH, { ...bodyOptions, label: 'rightUpperLeg', density: isLocal ? 0.002 : 0.001 });
 
                 const lowerLegTopY = upperLegTopY + upperLegH;
-                parts.leftLowerLeg = Bodies.rectangle(spawnX - legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW, lowerLegH, {
-                    ...bodyOptions,
-                    label: 'leftLowerLeg',
-                    density: isLocal ? 0.0018 : 0.001,
-                });
-                parts.rightLowerLeg = Bodies.rectangle(spawnX + legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW, lowerLegH, {
-                    ...bodyOptions,
-                    label: 'rightLowerLeg',
-                    density: isLocal ? 0.0018 : 0.001,
-                });
+                parts.leftLowerLeg = Bodies.rectangle(spawnX - legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW, lowerLegH, { ...bodyOptions, label: 'leftLowerLeg', density: isLocal ? 0.0018 : 0.001 });
+                parts.rightLowerLeg = Bodies.rectangle(spawnX + legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW, lowerLegH, { ...bodyOptions, label: 'rightLowerLeg', density: isLocal ? 0.0018 : 0.001 });
 
                 if (isLocal) {
                     const stiff = 0.6;
                     const damp = 0.08;
-
                     constraints.push(Constraint.create({
                         bodyA: parts.head, bodyB: parts.upperTorso,
                         pointA: { x: 0, y: headRadius }, pointB: { x: 0, y: -upperTorsoH / 2 },
@@ -431,13 +370,8 @@
             const keys = {};
             let mouseX = GAME_WIDTH / 2;
             let mouseY = GAME_HEIGHT / 2;
-
-            // Cooldowns for hver arm
-            let leftSwingCooldown = 0;  // timestamp for hvornår venstre arm kan slå igen
+            let leftSwingCooldown = 0;
             let rightSwingCooldown = 0;
-            // Visuel indikator – vi sætter en flag for at blinke armen hvidt
-            let leftArmCooldownFlash = false;
-            let rightArmCooldownFlash = false;
 
             window.addEventListener('keydown', e => {
                 keys[e.key.toLowerCase()] = true;
@@ -463,54 +397,39 @@
                     if (now >= leftSwingCooldown && localRagdoll) {
                         performLeftSwing();
                         leftSwingCooldown = now + SWING_COOLDOWN_MS;
-                        leftArmCooldownFlash = true;
-                        setTimeout(() => { leftArmCooldownFlash = false; }, 150);
                     }
                 } else if (e.button === 2) {
                     if (now >= rightSwingCooldown && localRagdoll) {
                         performRightSwing();
                         rightSwingCooldown = now + SWING_COOLDOWN_MS;
-                        rightArmCooldownFlash = true;
-                        setTimeout(() => { rightArmCooldownFlash = false; }, 150);
                     }
                 }
             });
 
-            canvas.addEventListener('mouseup', e => {});
             canvas.addEventListener('contextmenu', e => e.preventDefault());
 
             function performLeftSwing() {
                 if (!localRagdoll) return;
                 const swingForce = 1.25;
-                const dashForce = 0.5;
+                const dashForce = 0.25;   // sat ned præcis som ønsket
                 const torso = localRagdoll.parts.upperTorso;
-
                 burstSwing(localRagdoll.parts.leftUpperArm, localRagdoll.parts.leftLowerArm, mouseX, mouseY, swingForce);
-
                 const dx = mouseX - torso.position.x;
                 const dy = mouseY - torso.position.y;
                 const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                Body.applyForce(torso, torso.position, {
-                    x: (dx / len) * dashForce,
-                    y: (dy / len) * dashForce * 0.5,
-                });
+                Body.applyForce(torso, torso.position, { x: (dx / len) * dashForce, y: (dy / len) * dashForce * 0.5 });
             }
 
             function performRightSwing() {
                 if (!localRagdoll) return;
                 const swingForce = 1.25;
-                const dashForce = 0.5;
+                const dashForce = 0.25;
                 const torso = localRagdoll.parts.upperTorso;
-
                 burstSwing(localRagdoll.parts.rightUpperArm, localRagdoll.parts.rightLowerArm, mouseX, mouseY, swingForce);
-
                 const dx = mouseX - torso.position.x;
                 const dy = mouseY - torso.position.y;
                 const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                Body.applyForce(torso, torso.position, {
-                    x: (dx / len) * dashForce,
-                    y: (dy / len) * dashForce * 0.5,
-                });
+                Body.applyForce(torso, torso.position, { x: (dx / len) * dashForce, y: (dy / len) * dashForce * 0.5 });
             }
 
             function burstSwing(upperArm, lowerArm, targetX, targetY, force) {
@@ -560,12 +479,8 @@
                 const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.1);
                 lastFrameTime = timestamp;
 
-                if (localRagdoll) {
-                    applyLocalControls(dt);
-                }
-
+                if (localRagdoll) applyLocalControls(dt);
                 Engine.update(engine, 16.67);
-
                 if (localRagdoll) checkRespawn();
                 updateRemoteBodies();
 
@@ -583,19 +498,14 @@
                 const jumpForce = 0.08;
                 const torso = localRagdoll.parts.upperTorso;
 
-                if (keys['arrowleft'] || keys['a'] || keys['keya']) {
-                    Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
-                }
-                if (keys['arrowright'] || keys['d'] || keys['keyd']) {
-                    Body.applyForce(torso, torso.position, { x: moveForce, y: 0 });
-                }
-
+                if (keys['arrowleft'] || keys['a'] || keys['keya']) Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
+                if (keys['arrowright'] || keys['d'] || keys['keyd']) Body.applyForce(torso, torso.position, { x: moveForce, y: 0 });
                 if ((keys['arrowup'] || keys['w'] || keys['keyw'] || keys[' '] || keys['space']) && isGrounded()) {
                     Body.applyForce(torso, torso.position, { x: 0, y: -jumpForce });
                     lastGroundContact = 0;
                 }
 
-                // AKTIV RAGDOLL – kraftig oprejsning (0.3)
+                // Aktiv ragdoll – stærk oprejsning (0.3)
                 const uprightTorque = 0.3;
                 const torsoAngle = torso.angle;
                 let diff = 0 - torsoAngle;
@@ -603,46 +513,36 @@
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 Body.setAngularVelocity(torso, torso.angularVelocity + diff * uprightTorque);
 
-                // Hjælp underkroppen med at rette sig op
                 const lowerTorso = localRagdoll.parts.lowerTorso;
                 let lowerDiff = 0 - lowerTorso.angle;
                 while (lowerDiff > Math.PI) lowerDiff -= Math.PI * 2;
                 while (lowerDiff < -Math.PI) lowerDiff += Math.PI * 2;
                 Body.setAngularVelocity(lowerTorso, lowerTorso.angularVelocity + lowerDiff * uprightTorque * 0.7);
 
-                // BEN-STABILISATOR: hold benene næsten lodrette og pegende nedad
+                // Ben stabilisator – holder benene under kroppen
                 const legTorque = 0.35;
-                const targetLegAngle = 0; // lige ned
                 for (const legPart of [
-                    localRagdoll.parts.leftUpperLeg,
-                    localRagdoll.parts.leftLowerLeg,
-                    localRagdoll.parts.rightUpperLeg,
-                    localRagdoll.parts.rightLowerLeg,
+                    localRagdoll.parts.leftUpperLeg, localRagdoll.parts.leftLowerLeg,
+                    localRagdoll.parts.rightUpperLeg, localRagdoll.parts.rightLowerLeg,
                 ]) {
-                    let legDiff = targetLegAngle - legPart.angle;
+                    let legDiff = 0 - legPart.angle;
                     while (legDiff > Math.PI) legDiff -= Math.PI * 2;
                     while (legDiff < -Math.PI) legDiff += Math.PI * 2;
                     Body.setAngularVelocity(legPart, legPart.angularVelocity + legDiff * legTorque);
                 }
 
-                // Dæmp armene
+                // Dæmp arme
                 const armDamping = 0.94;
                 [
-                    localRagdoll.parts.leftUpperArm,
-                    localRagdoll.parts.rightUpperArm,
-                    localRagdoll.parts.leftLowerArm,
-                    localRagdoll.parts.rightLowerArm,
-                ].forEach(arm => {
-                    Body.setAngularVelocity(arm, arm.angularVelocity * armDamping);
-                });
+                    localRagdoll.parts.leftUpperArm, localRagdoll.parts.rightUpperArm,
+                    localRagdoll.parts.leftLowerArm, localRagdoll.parts.rightLowerArm,
+                ].forEach(arm => Body.setAngularVelocity(arm, arm.angularVelocity * armDamping));
             }
 
             function checkRespawn() {
                 const head = localRagdoll.parts.head;
                 const torso = localRagdoll.parts.upperTorso;
-                if (head.position.y > RESPAWN_Y_THRESHOLD || torso.position.y > RESPAWN_Y_THRESHOLD) {
-                    respawnLocalPlayer();
-                }
+                if (head.position.y > RESPAWN_Y_THRESHOLD || torso.position.y > RESPAWN_Y_THRESHOLD) respawnLocalPlayer();
             }
 
             function respawnLocalPlayer() {
@@ -655,7 +555,7 @@
             }
 
             // ─────────────────────────────────────
-            // REMOTE SPILLERE (statiske spøgelseskroppe)
+            // REMOTE SPILLERE (statiske, restitution=0)
             // ─────────────────────────────────────
             const remoteRagdolls = new Map();
 
@@ -696,34 +596,19 @@
             function connectWebSocket() {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${protocol}//${window.location.host}`;
-                try {
-                    ws = new WebSocket(wsUrl);
-                } catch (e) {
-                    console.error('WebSocket fejl:', e);
-                    setConnectionStatus(false);
-                    setTimeout(connectWebSocket, 3000);
-                    return;
+                try { ws = new WebSocket(wsUrl); } catch (e) {
+                    console.error(e); setConnectionStatus(false); setTimeout(connectWebSocket, 3000); return;
                 }
-                ws.onopen = () => {
-                    console.log('Forbundet!');
-                    setConnectionStatus(true);
-                };
-                ws.onmessage = (event) => {
-                    const msg = JSON.parse(event.data);
-                    handleServerMessage(msg);
-                };
+                ws.onopen = () => { console.log('Forbundet'); setConnectionStatus(true); };
+                ws.onmessage = (event) => { handleServerMessage(JSON.parse(event.data)); };
                 ws.onclose = () => {
-                    console.log('Forbindelse mistet');
-                    setConnectionStatus(false);
+                    console.log('Forbindelse mistet'); setConnectionStatus(false);
                     remotePlayers.clear();
                     for (const ragdoll of remoteRagdolls.values()) ragdoll.remove();
                     remoteRagdolls.clear();
                     setTimeout(connectWebSocket, 2000);
                 };
-                ws.onerror = (err) => {
-                    console.error('WS fejl:', err);
-                    ws.close();
-                };
+                ws.onerror = (err) => { console.error(err); ws.close(); };
             }
 
             function setConnectionStatus(status) {
@@ -740,57 +625,41 @@
             function handleServerMessage(msg) {
                 switch (msg.type) {
                     case 'init':
-                        localPlayerId = msg.id;
-                        localColor = msg.color;
+                        localPlayerId = msg.id; localColor = msg.color;
                         if (localRagdoll) localRagdoll.color = localColor;
-                        updatePlayerCount();
-                        break;
+                        updatePlayerCount(); break;
                     case 'playerJoined':
                         if (msg.id !== localPlayerId) {
-                            remotePlayers.set(msg.id, {
-                                color: msg.color,
-                                states: [],
-                                lastUpdate: performance.now(),
-                                ragdollPartsData: null,
-                            });
+                            remotePlayers.set(msg.id, { color: msg.color, states: [], lastUpdate: performance.now(), ragdollPartsData: null });
                             updatePlayerCount();
-                        }
-                        break;
+                        } break;
                     case 'playerLeft':
                         remotePlayers.delete(msg.id);
                         const r = remoteRagdolls.get(msg.id);
                         if (r) { r.remove(); remoteRagdolls.delete(msg.id); }
-                        updatePlayerCount();
-                        break;
+                        updatePlayerCount(); break;
                     case 'playerUpdate':
                         if (msg.id !== localPlayerId && remotePlayers.has(msg.id)) {
                             const rp = remotePlayers.get(msg.id);
                             rp.states.push({ timestamp: performance.now(), parts: msg.parts });
                             if (rp.states.length > 3) rp.states.shift();
                             rp.lastUpdate = performance.now();
-                        }
-                        break;
+                        } break;
                     case 'hit':
-                        if (msg.targetId === localPlayerId && localRagdoll) {
-                            applyKnockback(msg.impulse);
-                        }
+                        if (msg.targetId === localPlayerId && localRagdoll) applyKnockback(msg.impulse);
                         break;
                 }
             }
 
             function applyKnockback(impulse) {
                 if (!localRagdoll) return;
-                // Kraftigt reduceret styrke for at undgå at flyve ud af banen
-                const scale = 0.5;
+                const scale = 0.3; // kraftigt reduceret for at undgå voldsomme bevægelser
                 const torso = localRagdoll.parts.upperTorso;
-                Body.applyForce(torso, torso.position, {
-                    x: impulse.x * scale,
-                    y: impulse.y * scale,
-                });
+                Body.applyForce(torso, torso.position, { x: impulse.x * scale, y: impulse.y * scale });
                 for (const body of localRagdoll.allBodies) {
                     Body.setVelocity(body, {
-                        x: body.velocity.x + impulse.x * 0.1,
-                        y: body.velocity.y + impulse.y * 0.1,
+                        x: body.velocity.x + impulse.x * 0.05,
+                        y: body.velocity.y + impulse.y * 0.05,
                     });
                 }
             }
@@ -799,10 +668,8 @@
                 if (!connected || !ws || ws.readyState !== WebSocket.OPEN || !localRagdoll) return;
                 const partsData = {};
                 for (const [key, body] of Object.entries(localRagdoll.parts)) {
-                    partsData[key] = {
-                        x: body.position.x, y: body.position.y, a: body.angle,
-                        vx: body.velocity.x, vy: body.velocity.y, va: body.angularVelocity,
-                    };
+                    partsData[key] = { x: body.position.x, y: body.position.y, a: body.angle,
+                        vx: body.velocity.x, vy: body.velocity.y, va: body.angularVelocity };
                 }
                 ws.send(JSON.stringify({ type: 'update', parts: partsData }));
                 checkHitsOnRemotePlayers();
@@ -816,34 +683,26 @@
                     { pos: leftHand, body: localRagdoll.parts.leftLowerArm },
                     { pos: rightHand, body: localRagdoll.parts.rightLowerArm },
                 ];
-
                 for (const hand of hands) {
                     const handSpeed = Math.abs(hand.body.angularVelocity) + Math.abs(hand.body.velocity.x) + Math.abs(hand.body.velocity.y);
                     if (handSpeed < 5) continue;
-
                     for (const [remoteId, rp] of remotePlayers) {
                         if (!rp.ragdollPartsData) continue;
                         const head = rp.ragdollPartsData.head;
                         const torso = rp.ragdollPartsData.upperTorso;
                         if (!head || !torso) continue;
-
-                        const targets = [
-                            { x: head.x, y: head.y, radius: 18 },
-                            { x: torso.x, y: torso.y, radius: 28 },
-                        ];
-
+                        const targets = [{ x: head.x, y: head.y, radius: 18 }, { x: torso.x, y: torso.y, radius: 28 }];
                         for (const target of targets) {
                             const dx = hand.pos.x - target.x;
                             const dy = hand.pos.y - target.y;
                             const dist = Math.sqrt(dx * dx + dy * dy);
                             if (dist < target.radius + 15) {
-                                // Neddroslet impuls – kraftig men kontrolleret
                                 ws.send(JSON.stringify({
                                     type: 'hit',
                                     targetId: remoteId,
                                     impulse: {
-                                        x: hand.body.velocity.x * 1.5 + (dx / (dist || 1)) * 4,
-                                        y: hand.body.velocity.y * 1.5 + (dy / (dist || 1)) * 4 - 2,
+                                        x: hand.body.velocity.x * 1.2 + (dx / (dist || 1)) * 3,
+                                        y: hand.body.velocity.y * 1.2 + (dy / (dist || 1)) * 3 - 1.5,
                                     },
                                 }));
                                 break;
@@ -866,35 +725,22 @@
                 for (const [id, rp] of remotePlayers) {
                     if (rp.states.length >= 2) {
                         const now = timestamp;
-                        let s0 = rp.states[0];
-                        let s1 = rp.states[rp.states.length - 1];
+                        let s0 = rp.states[0], s1 = rp.states[rp.states.length - 1];
                         for (let i = 0; i < rp.states.length - 1; i++) {
-                            if (rp.states[i + 1].timestamp >= now) {
-                                s0 = rp.states[i];
-                                s1 = rp.states[i + 1];
-                                break;
-                            }
+                            if (rp.states[i + 1].timestamp >= now) { s0 = rp.states[i]; s1 = rp.states[i + 1]; break; }
                         }
                         const tDiff = s1.timestamp - s0.timestamp;
                         let alpha = 0;
                         if (tDiff > 0) alpha = Math.max(0, Math.min(1, (now - s0.timestamp) / tDiff));
                         const interpParts = {};
                         for (const key of Object.keys(s1.parts)) {
-                            const p0 = s0.parts[key];
-                            const p1 = s1.parts[key];
+                            const p0 = s0.parts[key], p1 = s1.parts[key];
                             if (p0 && p1) {
-                                let a0 = p0.a, a1 = p1.a;
-                                let diff = a1 - a0;
+                                let a0 = p0.a, a1 = p1.a, diff = a1 - a0;
                                 while (diff > Math.PI) diff -= Math.PI * 2;
                                 while (diff < -Math.PI) diff += Math.PI * 2;
-                                interpParts[key] = {
-                                    x: p0.x + (p1.x - p0.x) * alpha,
-                                    y: p0.y + (p1.y - p0.y) * alpha,
-                                    a: a0 + diff * alpha,
-                                };
-                            } else if (p1) {
-                                interpParts[key] = { ...p1 };
-                            }
+                                interpParts[key] = { x: p0.x + (p1.x - p0.x) * alpha, y: p0.y + (p1.y - p0.y) * alpha, a: a0 + diff * alpha };
+                            } else if (p1) interpParts[key] = { ...p1 };
                         }
                         rp.ragdollPartsData = interpParts;
                     } else if (rp.states.length === 1) {
@@ -909,20 +755,12 @@
             function render(timestamp) {
                 ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
                 const bgGrad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-                bgGrad.addColorStop(0, '#1a2a3d');
-                bgGrad.addColorStop(0.5, '#1e2e42');
-                bgGrad.addColorStop(1, '#15202b');
-                ctx.fillStyle = bgGrad;
-                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                bgGrad.addColorStop(0, '#1a2a3d'); bgGrad.addColorStop(0.5, '#1e2e42'); bgGrad.addColorStop(1, '#15202b');
+                ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-                ctx.strokeStyle = 'rgba(255,255,255,0.02)';
-                ctx.lineWidth = 1;
-                for (let x = 60; x < GAME_WIDTH; x += 60) {
-                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GAME_HEIGHT); ctx.stroke();
-                }
-                for (let y = 60; y < GAME_HEIGHT; y += 60) {
-                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(GAME_WIDTH, y); ctx.stroke();
-                }
+                ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.lineWidth = 1;
+                for (let x = 60; x < GAME_WIDTH; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GAME_HEIGHT); ctx.stroke(); }
+                for (let y = 60; y < GAME_HEIGHT; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(GAME_WIDTH, y); ctx.stroke(); }
 
                 renderPlatforms();
 
@@ -931,9 +769,7 @@
                         renderRagdollFromData(rp.ragdollPartsData, rp.color, 0.7);
                         const h = rp.ragdollPartsData.head;
                         if (h) {
-                            ctx.fillStyle = rp.color;
-                            ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif';
-                            ctx.textAlign = 'center';
+                            ctx.fillStyle = rp.color; ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif'; ctx.textAlign = 'center';
                             ctx.fillText(id.replace('player_', 'Spiller '), h.x, h.y - 28);
                         }
                     }
@@ -942,24 +778,16 @@
                 if (localRagdoll) {
                     renderRagdollBodies(localRagdoll, localColor, 1.0);
                     const hp = localRagdoll.parts.head.position;
-                    ctx.fillStyle = '#fff';
-                    ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
-                    ctx.textAlign = 'center';
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif'; ctx.textAlign = 'center';
                     ctx.fillText('DIG', hp.x, hp.y - 28);
-                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 3;
                     ctx.beginPath(); ctx.arc(hp.x, hp.y, 32, 0, Math.PI * 2); ctx.stroke();
                 }
 
                 const deathGrad = ctx.createLinearGradient(0, RESPAWN_Y_THRESHOLD - 30, 0, RESPAWN_Y_THRESHOLD + 20);
-                deathGrad.addColorStop(0, 'rgba(231,76,60,0)');
-                deathGrad.addColorStop(0.5, 'rgba(231,76,60,0.15)');
-                deathGrad.addColorStop(1, 'rgba(231,76,60,0.4)');
-                ctx.fillStyle = deathGrad;
-                ctx.fillRect(0, RESPAWN_Y_THRESHOLD - 30, GAME_WIDTH, 60);
-                ctx.strokeStyle = 'rgba(231,76,60,0.5)';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([10, 20]);
+                deathGrad.addColorStop(0, 'rgba(231,76,60,0)'); deathGrad.addColorStop(0.5, 'rgba(231,76,60,0.15)'); deathGrad.addColorStop(1, 'rgba(231,76,60,0.4)');
+                ctx.fillStyle = deathGrad; ctx.fillRect(0, RESPAWN_Y_THRESHOLD - 30, GAME_WIDTH, 60);
+                ctx.strokeStyle = 'rgba(231,76,60,0.5)'; ctx.lineWidth = 2; ctx.setLineDash([10, 20]);
                 ctx.beginPath(); ctx.moveTo(0, RESPAWN_Y_THRESHOLD); ctx.lineTo(GAME_WIDTH, RESPAWN_Y_THRESHOLD); ctx.stroke();
                 ctx.setLineDash([]);
             }
@@ -967,81 +795,53 @@
             function renderPlatforms() {
                 for (const plat of platforms) {
                     const v = plat.vertices;
-                    ctx.fillStyle = '#3d5068';
-                    ctx.strokeStyle = '#546e8a';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(v[0].x, v[0].y);
+                    ctx.fillStyle = '#3d5068'; ctx.strokeStyle = '#546e8a'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y);
                     for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
-                    ctx.closePath();
-                    ctx.fill(); ctx.stroke();
+                    ctx.closePath(); ctx.fill(); ctx.stroke();
                     const topY = Math.min(...v.map(p => p.y));
-                    const minX = Math.min(...v.map(p => p.x));
-                    const maxX = Math.max(...v.map(p => p.x));
-                    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-                    ctx.beginPath(); ctx.moveTo(minX, topY); ctx.lineTo(maxX, topY); ctx.stroke();
+                    const minX = Math.min(...v.map(p => p.x)), maxX = Math.max(...v.map(p => p.x));
+                    ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath();
+                    ctx.moveTo(minX, topY); ctx.lineTo(maxX, topY); ctx.stroke();
                 }
-                ctx.fillStyle = '#2c3d50';
-                ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GROUND_THICKNESS);
-                ctx.fillStyle = '#3d5068';
-                ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 6);
-                ctx.strokeStyle = '#546e8a';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(0, GROUND_Y, GAME_WIDTH, GROUND_THICKNESS);
+                ctx.fillStyle = '#2c3d50'; ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GROUND_THICKNESS);
+                ctx.fillStyle = '#3d5068'; ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 6);
+                ctx.strokeStyle = '#546e8a'; ctx.lineWidth = 2; ctx.strokeRect(0, GROUND_Y, GAME_WIDTH, GROUND_THICKNESS);
             }
 
             function renderRagdollFromData(partsData, color, alpha) {
-                const order = ['leftLowerLeg', 'rightLowerLeg', 'leftUpperLeg', 'rightUpperLeg',
-                    'lowerTorso', 'leftLowerArm', 'rightLowerArm', 'leftUpperArm', 'rightUpperArm',
-                    'upperTorso', 'head'];
+                const order = ['leftLowerLeg','rightLowerLeg','leftUpperLeg','rightUpperLeg',
+                    'lowerTorso','leftLowerArm','rightLowerArm','leftUpperArm','rightUpperArm','upperTorso','head'];
                 const dims = {
-                    head: { type: 'circle', r: 17 },
-                    upperTorso: { type: 'rect', w: 28, h: 38 },
-                    lowerTorso: { type: 'rect', w: 24, h: 34 },
-                    leftUpperArm: { type: 'rect', w: 11, h: 28 },
-                    rightUpperArm: { type: 'rect', w: 11, h: 28 },
-                    leftLowerArm: { type: 'rect', w: 9, h: 26 },
-                    rightLowerArm: { type: 'rect', w: 9, h: 26 },
-                    leftUpperLeg: { type: 'rect', w: 13, h: 34 },
-                    rightUpperLeg: { type: 'rect', w: 13, h: 34 },
-                    leftLowerLeg: { type: 'rect', w: 11, h: 30 },
-                    rightLowerLeg: { type: 'rect', w: 11, h: 30 },
+                    head: { type: 'circle', r: 17 }, upperTorso: { type: 'rect', w: 28, h: 38 }, lowerTorso: { type: 'rect', w: 24, h: 34 },
+                    leftUpperArm: { type: 'rect', w: 11, h: 28 }, rightUpperArm: { type: 'rect', w: 11, h: 28 },
+                    leftLowerArm: { type: 'rect', w: 9, h: 26 }, rightLowerArm: { type: 'rect', w: 9, h: 26 },
+                    leftUpperLeg: { type: 'rect', w: 13, h: 34 }, rightUpperLeg: { type: 'rect', w: 13, h: 34 },
+                    leftLowerLeg: { type: 'rect', w: 11, h: 30 }, rightLowerLeg: { type: 'rect', w: 11, h: 30 },
                 };
-                const darker = darkenColor(color, 0.7);
-                const lighter = lightenColor(color, 0.25);
-
+                const darker = darkenColor(color, 0.7), lighter = lightenColor(color, 0.25);
                 for (const key of order) {
-                    const d = partsData[key];
-                    const dim = dims[key];
+                    const d = partsData[key], dim = dims[key];
                     if (!d || !dim) continue;
-                    ctx.save();
-                    ctx.globalAlpha = alpha;
-                    ctx.translate(d.x, d.y);
-                    ctx.rotate(d.a);
+                    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(d.x, d.y); ctx.rotate(d.a);
                     if (dim.type === 'circle') {
-                        const grad = ctx.createRadialGradient(-3, -4, dim.r * 0.2, 0, 0, dim.r);
-                        grad.addColorStop(0, lighter); grad.addColorStop(1, darker);
-                        ctx.fillStyle = grad;
-                        ctx.beginPath(); ctx.arc(0, 0, dim.r, 0, Math.PI * 2); ctx.fill();
+                        const grad = ctx.createRadialGradient(-3,-4,dim.r*0.2,0,0,dim.r);
+                        grad.addColorStop(0,lighter); grad.addColorStop(1,darker);
+                        ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(0,0,dim.r,0,Math.PI*2); ctx.fill();
                         ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2.5; ctx.stroke();
-                        ctx.fillStyle = '#fff';
-                        ctx.beginPath(); ctx.arc(-5, -3, 5, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(5, -3, 5, 0, Math.PI*2); ctx.fill();
-                        ctx.fillStyle = '#111';
-                        ctx.beginPath(); ctx.arc(-4, -3, 2.2, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(6, -3, 2.2, 0, Math.PI*2); ctx.fill();
-                        ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
-                        ctx.beginPath(); ctx.arc(0, 4, 6, 0.1, Math.PI-0.1); ctx.stroke();
+                        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-5,-3,5,0,Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(5,-3,5,0,Math.PI*2); ctx.fill();
+                        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(-4,-3,2.2,0,Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(6,-3,2.2,0,Math.PI*2); ctx.fill();
+                        ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0,4,6,0.1,Math.PI-0.1); ctx.stroke();
                     } else {
-                        const grad = ctx.createLinearGradient(-dim.w/2, 0, dim.w/2, 0);
-                        grad.addColorStop(0, darker); grad.addColorStop(0.5, color); grad.addColorStop(1, darker);
-                        ctx.fillStyle = grad;
-                        ctx.fillRect(-dim.w/2, -dim.h/2, dim.w, dim.h);
-                        ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2;
-                        ctx.strokeRect(-dim.w/2, -dim.h/2, dim.w, dim.h);
+                        const grad = ctx.createLinearGradient(-dim.w/2,0,dim.w/2,0);
+                        grad.addColorStop(0,darker); grad.addColorStop(0.5,color); grad.addColorStop(1,darker);
+                        ctx.fillStyle = grad; ctx.fillRect(-dim.w/2,-dim.h/2,dim.w,dim.h);
+                        ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2; ctx.strokeRect(-dim.w/2,-dim.h/2,dim.w,dim.h);
                         ctx.fillStyle = lighter;
-                        ctx.beginPath(); ctx.arc(-dim.w/2+3, -dim.h/2+3, 3, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(dim.w/2-3, -dim.h/2+3, 3, 0, Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(-dim.w/2+3,-dim.h/2+3,3,0,Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(dim.w/2-3,-dim.h/2+3,3,0,Math.PI*2); ctx.fill();
                     }
                     ctx.restore();
                 }
@@ -1049,23 +849,18 @@
 
             function renderRagdollBodies(ragdoll, color, alpha) {
                 const data = {};
-                for (const [k, b] of Object.entries(ragdoll.parts)) {
-                    data[k] = { x: b.position.x, y: b.position.y, a: b.angle };
-                }
+                for (const [k, b] of Object.entries(ragdoll.parts)) data[k] = { x: b.position.x, y: b.position.y, a: b.angle };
                 renderRagdollFromData(data, color, alpha);
             }
 
             function darkenColor(hex, f) {
-                const r = Math.round(parseInt(hex.slice(1,3),16) * f);
-                const g = Math.round(parseInt(hex.slice(3,5),16) * f);
-                const b = Math.round(parseInt(hex.slice(5,7),16) * f);
+                const r = Math.round(parseInt(hex.slice(1,3),16)*f), g = Math.round(parseInt(hex.slice(3,5),16)*f), b = Math.round(parseInt(hex.slice(5,7),16)*f);
                 return `rgb(${r},${g},${b})`;
             }
-
             function lightenColor(hex, f) {
-                const r = Math.min(255, Math.round(parseInt(hex.slice(1,3),16) + (255-parseInt(hex.slice(1,3),16))*f));
-                const g = Math.min(255, Math.round(parseInt(hex.slice(3,5),16) + (255-parseInt(hex.slice(3,5),16))*f));
-                const b = Math.min(255, Math.round(parseInt(hex.slice(5,7),16) + (255-parseInt(hex.slice(5,7),16))*f));
+                const r = Math.min(255,Math.round(parseInt(hex.slice(1,3),16)+(255-parseInt(hex.slice(1,3),16))*f));
+                const g = Math.min(255,Math.round(parseInt(hex.slice(3,5),16)+(255-parseInt(hex.slice(3,5),16))*f));
+                const b = Math.min(255,Math.round(parseInt(hex.slice(5,7),16)+(255-parseInt(hex.slice(5,7),16))*f));
                 return `rgb(${r},${g},${b})`;
             }
 
@@ -1074,8 +869,7 @@
                 for (const [id, rp] of remotePlayers) {
                     if (now - rp.lastUpdate > 8000) {
                         remotePlayers.delete(id);
-                        const rd = remoteRagdolls.get(id);
-                        if (rd) { rd.remove(); remoteRagdolls.delete(id); }
+                        const rd = remoteRagdolls.get(id); if (rd) { rd.remove(); remoteRagdolls.delete(id); }
                         updatePlayerCount();
                     }
                 }
@@ -1083,8 +877,7 @@
 
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-
-            console.log('🎮 Ragdoll Fight – Stabil standing, cooldown slag, balanceret knockback');
+            console.log('🎮 Ragdoll Fight – Dash 0.25, bløde kollisioner');
         })();
     </script>
 </body>
