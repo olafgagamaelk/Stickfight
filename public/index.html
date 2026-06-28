@@ -249,17 +249,20 @@
                 const lowerTorsoY = upperTorsoY + upperTorsoH / 2 + lowerTorsoH / 2;
                 const shoulderY = headY + headRadius + 4;
 
-                // Vigtigt: remote kroppe har restitution=0 for at undgå voldsomme bounce
+                // Lokale kroppe er dynamiske, remote kroppe er sensorer (ingen fysisk kollision)
                 const bodyOptions = isLocal ? {
                     restitution: 0.2,
                     friction: 0.5,
                     collisionFilter: { group: collisionGroup },
                     isStatic: false,
+                    isSensor: false,
                 } : {
+                    // Sensor: kan ikke skubbe eller flytte sig, genererer ikke fysisk respons
+                    isStatic: false,
+                    isSensor: true,
                     restitution: 0,
-                    friction: 0.2,
+                    friction: 0,
                     collisionFilter: { group: collisionGroup },
-                    isStatic: true,
                 };
 
                 parts.head = Bodies.circle(spawnX, headY, headRadius, { ...bodyOptions, label: 'head', density: isLocal ? 0.002 : 0.001 });
@@ -286,56 +289,16 @@
                 if (isLocal) {
                     const stiff = 0.6;
                     const damp = 0.08;
-                    constraints.push(Constraint.create({
-                        bodyA: parts.head, bodyB: parts.upperTorso,
-                        pointA: { x: 0, y: headRadius }, pointB: { x: 0, y: -upperTorsoH / 2 },
-                        stiffness: stiff, damping: damp, length: 2,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.upperTorso, bodyB: parts.lowerTorso,
-                        pointA: { x: 0, y: upperTorsoH / 2 }, pointB: { x: 0, y: -lowerTorsoH / 2 },
-                        stiffness: stiff * 1.2, damping: damp, length: 1,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.upperTorso, bodyB: parts.leftUpperArm,
-                        pointA: { x: -upperTorsoW / 2 + 3, y: -upperTorsoH / 2 + 6 }, pointB: { x: 0, y: -upperArmH / 2 },
-                        stiffness: stiff * 0.7, damping: damp * 1.5, length: 1,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.upperTorso, bodyB: parts.rightUpperArm,
-                        pointA: { x: upperTorsoW / 2 - 3, y: -upperTorsoH / 2 + 6 }, pointB: { x: 0, y: -upperArmH / 2 },
-                        stiffness: stiff * 0.7, damping: damp * 1.5, length: 1,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.leftUpperArm, bodyB: parts.leftLowerArm,
-                        pointA: { x: 0, y: upperArmH / 2 }, pointB: { x: 0, y: -lowerArmH / 2 },
-                        stiffness: stiff * 0.5, damping: damp * 2, length: 1,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.rightUpperArm, bodyB: parts.rightLowerArm,
-                        pointA: { x: 0, y: upperArmH / 2 }, pointB: { x: 0, y: -lowerArmH / 2 },
-                        stiffness: stiff * 0.5, damping: damp * 2, length: 1,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.lowerTorso, bodyB: parts.leftUpperLeg,
-                        pointA: { x: -lowerTorsoW / 3, y: lowerTorsoH / 2 }, pointB: { x: 0, y: -upperLegH / 2 },
-                        stiffness: stiff * 0.9, damping: damp, length: 2,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.lowerTorso, bodyB: parts.rightUpperLeg,
-                        pointA: { x: lowerTorsoW / 3, y: lowerTorsoH / 2 }, pointB: { x: 0, y: -upperLegH / 2 },
-                        stiffness: stiff * 0.9, damping: damp, length: 2,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.leftUpperLeg, bodyB: parts.leftLowerLeg,
-                        pointA: { x: 0, y: upperLegH / 2 }, pointB: { x: 0, y: -lowerLegH / 2 },
-                        stiffness: stiff * 0.6, damping: damp * 1.8, length: 1,
-                    }));
-                    constraints.push(Constraint.create({
-                        bodyA: parts.rightUpperLeg, bodyB: parts.rightLowerLeg,
-                        pointA: { x: 0, y: upperLegH / 2 }, pointB: { x: 0, y: -lowerLegH / 2 },
-                        stiffness: stiff * 0.6, damping: damp * 1.8, length: 1,
-                    }));
+                    constraints.push(Constraint.create({ bodyA: parts.head, bodyB: parts.upperTorso, pointA: { x: 0, y: headRadius }, pointB: { x: 0, y: -upperTorsoH / 2 }, stiffness: stiff, damping: damp, length: 2 }));
+                    constraints.push(Constraint.create({ bodyA: parts.upperTorso, bodyB: parts.lowerTorso, pointA: { x: 0, y: upperTorsoH / 2 }, pointB: { x: 0, y: -lowerTorsoH / 2 }, stiffness: stiff * 1.2, damping: damp, length: 1 }));
+                    constraints.push(Constraint.create({ bodyA: parts.upperTorso, bodyB: parts.leftUpperArm, pointA: { x: -upperTorsoW / 2 + 3, y: -upperTorsoH / 2 + 6 }, pointB: { x: 0, y: -upperArmH / 2 }, stiffness: stiff * 0.7, damping: damp * 1.5, length: 1 }));
+                    constraints.push(Constraint.create({ bodyA: parts.upperTorso, bodyB: parts.rightUpperArm, pointA: { x: upperTorsoW / 2 - 3, y: -upperTorsoH / 2 + 6 }, pointB: { x: 0, y: -upperArmH / 2 }, stiffness: stiff * 0.7, damping: damp * 1.5, length: 1 }));
+                    constraints.push(Constraint.create({ bodyA: parts.leftUpperArm, bodyB: parts.leftLowerArm, pointA: { x: 0, y: upperArmH / 2 }, pointB: { x: 0, y: -lowerArmH / 2 }, stiffness: stiff * 0.5, damping: damp * 2, length: 1 }));
+                    constraints.push(Constraint.create({ bodyA: parts.rightUpperArm, bodyB: parts.rightLowerArm, pointA: { x: 0, y: upperArmH / 2 }, pointB: { x: 0, y: -lowerArmH / 2 }, stiffness: stiff * 0.5, damping: damp * 2, length: 1 }));
+                    constraints.push(Constraint.create({ bodyA: parts.lowerTorso, bodyB: parts.leftUpperLeg, pointA: { x: -lowerTorsoW / 3, y: lowerTorsoH / 2 }, pointB: { x: 0, y: -upperLegH / 2 }, stiffness: stiff * 0.9, damping: damp, length: 2 }));
+                    constraints.push(Constraint.create({ bodyA: parts.lowerTorso, bodyB: parts.rightUpperLeg, pointA: { x: lowerTorsoW / 3, y: lowerTorsoH / 2 }, pointB: { x: 0, y: -upperLegH / 2 }, stiffness: stiff * 0.9, damping: damp, length: 2 }));
+                    constraints.push(Constraint.create({ bodyA: parts.leftUpperLeg, bodyB: parts.leftLowerLeg, pointA: { x: 0, y: upperLegH / 2 }, pointB: { x: 0, y: -lowerLegH / 2 }, stiffness: stiff * 0.6, damping: damp * 1.8, length: 1 }));
+                    constraints.push(Constraint.create({ bodyA: parts.rightUpperLeg, bodyB: parts.rightLowerLeg, pointA: { x: 0, y: upperLegH / 2 }, pointB: { x: 0, y: -lowerLegH / 2 }, stiffness: stiff * 0.6, damping: damp * 1.8, length: 1 }));
                 }
 
                 const allBodies = Object.values(parts);
@@ -411,7 +374,7 @@
             function performLeftSwing() {
                 if (!localRagdoll) return;
                 const swingForce = 1.25;
-                const dashForce = 0.25;   // sat ned præcis som ønsket
+                const dashForce = 0.25;
                 const torso = localRagdoll.parts.upperTorso;
                 burstSwing(localRagdoll.parts.leftUpperArm, localRagdoll.parts.leftLowerArm, mouseX, mouseY, swingForce);
                 const dx = mouseX - torso.position.x;
@@ -495,7 +458,7 @@
 
             function applyLocalControls(dt) {
                 const moveForce = 0.018;
-                const jumpForce = 0.08;
+                const jumpForce = 0.13;   // stærkere hop
                 const torso = localRagdoll.parts.upperTorso;
 
                 if (keys['arrowleft'] || keys['a'] || keys['keya']) Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
@@ -519,7 +482,7 @@
                 while (lowerDiff < -Math.PI) lowerDiff += Math.PI * 2;
                 Body.setAngularVelocity(lowerTorso, lowerTorso.angularVelocity + lowerDiff * uprightTorque * 0.7);
 
-                // Ben stabilisator – holder benene under kroppen
+                // Ben stabilisator
                 const legTorque = 0.35;
                 for (const legPart of [
                     localRagdoll.parts.leftUpperLeg, localRagdoll.parts.leftLowerLeg,
@@ -555,7 +518,7 @@
             }
 
             // ─────────────────────────────────────
-            // REMOTE SPILLERE (statiske, restitution=0)
+            // REMOTE SPILLERE (sensorer – ingen fysisk kontakt)
             // ─────────────────────────────────────
             const remoteRagdolls = new Map();
 
@@ -573,6 +536,7 @@
                         if (data) {
                             Body.setPosition(body, { x: data.x, y: data.y });
                             Body.setAngle(body, data.a);
+                            // Sensorer har ingen hastighed/impuls
                             Body.setVelocity(body, { x: 0, y: 0 });
                             Body.setAngularVelocity(body, 0);
                         }
@@ -653,7 +617,7 @@
 
             function applyKnockback(impulse) {
                 if (!localRagdoll) return;
-                const scale = 0.3; // kraftigt reduceret for at undgå voldsomme bevægelser
+                const scale = 0.3;
                 const torso = localRagdoll.parts.upperTorso;
                 Body.applyForce(torso, torso.position, { x: impulse.x * scale, y: impulse.y * scale });
                 for (const body of localRagdoll.allBodies) {
@@ -877,7 +841,7 @@
 
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-            console.log('🎮 Ragdoll Fight – Dash 0.25, bløde kollisioner');
+            console.log('🎮 Ragdoll Fight – Sensor-modstandere, stærkt hop');
         })();
     </script>
 </body>
