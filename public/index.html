@@ -11,13 +11,11 @@
             --text: #e0e0e0;
             --accent: #e94560;
         }
-
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
         body {
             background: var(--bg);
             display: flex;
@@ -31,7 +29,6 @@
             -webkit-user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-
         #gameContainer {
             position: relative;
             width: 100vw;
@@ -42,7 +39,6 @@
             justify-content: center;
             align-items: center;
         }
-
         canvas {
             display: block;
             border-radius: 12px;
@@ -53,7 +49,6 @@
             max-height: 100%;
             image-rendering: auto;
         }
-
         #uiOverlay {
             position: absolute;
             top: 16px;
@@ -65,7 +60,6 @@
             pointer-events: none;
             z-index: 10;
         }
-
         #statusBadge {
             background: var(--surface);
             color: var(--text);
@@ -88,7 +82,6 @@
             color: #e74c3c;
             box-shadow: 0 0 20px rgba(231, 76, 60, 0.2);
         }
-
         #playerCount {
             background: var(--surface);
             color: #f39c12;
@@ -100,7 +93,6 @@
             border: 1px solid rgba(243, 156, 18, 0.4);
             backdrop-filter: blur(10px);
         }
-
         #controlsHint {
             position: absolute;
             bottom: 20px;
@@ -153,6 +145,7 @@
             const GROUND_Y = 640;
             const GROUND_THICKNESS = 80;
             const SWING_COOLDOWN_MS = 350;
+            const SOFT_PUSH_FORCE = 0.5; // meget blid manuel kollision
 
             const PLAYER_COLORS = [
                 '#4A90D9', '#E74C3C', '#2ECC71', '#F39C12',
@@ -249,17 +242,18 @@
                 const lowerTorsoY = upperTorsoY + upperTorsoH / 2 + lowerTorsoH / 2;
                 const shoulderY = headY + headRadius + 4;
 
-                // Lokale kroppe dynamiske, remote kroppe statiske med FRIKTION 0
+                // Lokale kroppe dynamiske, remote kroppe er SENSORER (ingen fysisk respons)
                 const bodyOptions = isLocal ? {
                     restitution: 0.2,
                     friction: 0.5,
                     collisionFilter: { group: collisionGroup },
                     isStatic: false,
+                    isSensor: false,
                 } : {
-                    isStatic: true,
+                    isStatic: false,
+                    isSensor: true,
                     restitution: 0,
                     friction: 0,
-                    frictionStatic: 0,
                     collisionFilter: { group: collisionGroup },
                 };
 
@@ -440,19 +434,12 @@
                 const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.1);
                 lastFrameTime = timestamp;
 
-                if (localRagdoll) applyLocalControls(dt);
-                Engine.update(engine, 16.67);
-
-                // Ekstra sikkerhed: stop al bevægelse hvis i kontakt med en fjende
                 if (localRagdoll) {
-                    for (const body of localRagdoll.allBodies) {
-                        const collisions = Query.collides(body, Array.from(remoteRagdolls.values()).flatMap(r => r.allBodies));
-                        if (collisions.length > 0) {
-                            Body.setVelocity(body, { x: 0, y: 0 });
-                            Body.setAngularVelocity(body, 0);
-                        }
-                    }
+                    applyLocalControls(dt);
+                    applySoftCollision();   // ← NYT MANUELT KOLLISIONSSYSTEM
                 }
+
+                Engine.update(engine, 16.67);
 
                 if (localRagdoll) checkRespawn();
                 updateRemoteBodies();
@@ -468,7 +455,7 @@
 
             function applyLocalControls(dt) {
                 const moveForce = 0.018;
-                const jumpForce = 0.30;   // ★ som ønsket
+                const jumpForce = 0.30;
                 const torso = localRagdoll.parts.upperTorso;
 
                 if (keys['arrowleft'] || keys['a'] || keys['keya']) Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
@@ -504,12 +491,51 @@
                     Body.setAngularVelocity(legPart, legPart.angularVelocity + legDiff * legTorque);
                 }
 
-                // Dæmp arme
-                const armDamping = 0.94;
-                [
-                    localRagdoll.parts.leftUpperArm, localRagdoll.parts.rightUpperArm,
-                    localRagdoll.parts.leftLowerArm, localRagdoll.parts.rightLowerArm,
-                ].forEach(arm => Body.setAngularVelocity(arm, arm.angularVelocity * armDamping));
+                // Dæmp arme og alle kroppe let for at undgå voldsomme sving
+                const damping = 0.97;
+                for (const body of localRagdoll.allBodies) {
+                    Body.setVelocity(body, {
+                        x: body.velocity.x * damping,
+                        y: body.velocity.y * damping,
+                    });
+                    Body.setAngularVelocity(body, body.angularVelocity * damping);
+                }
+            }
+
+            // ★★★★★ NYT MANUELT KOLLISIONSSYSTEM ★★★★★
+            function applySoftCollision() {
+                if (!localRagdoll) return;
+                const remoteBodies = [];
+                for (const ragdoll of remoteRagdolls.values()) {
+                    remoteBodies.push(...ragdoll.allBodies);
+                }
+                if (remoteBodies.length === 0) return;
+
+                for (const localBody of localRagdoll.allBodies) {
+                    const collisions = Query.collides(localBody, remoteBodies);
+                    for (const collision of collisions) {
+                        const remoteBody = collision.bodyB;
+                        // Retning fra remote mod lokal
+                        const dx = localBody.position.x - remoteBody.position.x;
+                        const dy = localBody.position.y - remoteBody.position.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+                        // Meget blød kraft væk fra remote
+                        Body.applyForce(localBody, localBody.position, {
+                            x: nx * SOFT_PUSH_FORCE,
+                            y: ny * SOFT_PUSH_FORCE,
+                        });
+                        // Klip hastighed for ekstra sikkerhed
+                        const speed = Math.sqrt(localBody.velocity.x ** 2 + localBody.velocity.y ** 2);
+                        if (speed > 15) {
+                            Body.setVelocity(localBody, {
+                                x: localBody.velocity.x * 0.3,
+                                y: localBody.velocity.y * 0.3,
+                            });
+                        }
+                    }
+                }
             }
 
             function checkRespawn() {
@@ -528,7 +554,7 @@
             }
 
             // ─────────────────────────────────────
-            // REMOTE SPILLERE (statiske, friktion 0)
+            // REMOTE SPILLERE (sensorer)
             // ─────────────────────────────────────
             const remoteRagdolls = new Map();
 
@@ -848,7 +874,7 @@
 
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-            console.log('🎮 Ragdoll Fight – Fling 100% løst, hop 0.30');
+            console.log('🎮 Ragdoll Fight – NYT kollisionssystem: sensorer + blød manuel push');
         })();
     </script>
 </body>
