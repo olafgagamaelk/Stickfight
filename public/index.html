@@ -135,7 +135,7 @@
         <div id="controlsHint">
             <span>WASD / Piletaster</span> = Bevæg · <span>Mellemrum</span> = Hop ·
             <span>Venstre klik</span> = Slå venstre · <span>Højre klik</span> = Slå højre ·
-            <span>Træk med mus</span> = Kast dig selv
+            <span>Træk med mus</span> fjernet – kun klik for slag
         </div>
     </div>
 
@@ -494,17 +494,14 @@
             let localRagdoll = createRagdoll(spawn.x, spawn.y, localColor, LOCAL_COLLISION_GROUP, true);
 
             // ─────────────────────────────────────
-            // INPUT STATE
+            // INPUT STATE (kun klik-baserede slag, ingen hold)
             // ─────────────────────────────────────
             const keys = {};
             let mouseX = GAME_WIDTH / 2;
             let mouseY = GAME_HEIGHT / 2;
-            let mouseDownLeft = false;
-            let mouseDownRight = false;
-            let mouseGrabbing = false;
-            let grabJoint = null;
-            let grabBody = null;
-            let grabOffset = { x: 0, y: 0 };
+            // Til enkeltklik-slag
+            let leftSwingReady = true;   // klar til at slå med venstre arm
+            let rightSwingReady = true;  // klar til at slå med højre arm
 
             window.addEventListener('keydown', e => {
                 keys[e.key.toLowerCase()] = true;
@@ -524,82 +521,91 @@
                 const scaleY = GAME_HEIGHT / rect.height;
                 mouseX = (e.clientX - rect.left) * scaleX;
                 mouseY = (e.clientY - rect.top) * scaleY;
-
-                if (mouseGrabbing && grabBody && grabJoint) {
-                    const targetPos = { x: mouseX + grabOffset.x, y: mouseY + grabOffset.y };
-                    Constraint.pointA(grabJoint, targetPos);
-                }
             });
 
             canvas.addEventListener('mousedown', e => {
                 if (e.button === 0) {
-                    mouseDownLeft = true;
-                    const nearest = findNearestLocalBody(mouseX, mouseY, 60);
-                    if (nearest && !mouseGrabbing) {
-                        mouseGrabbing = true;
-                        grabBody = nearest;
-                        grabOffset = {
-                            x: nearest.position.x - mouseX,
-                            y: nearest.position.y - mouseY,
-                        };
-                        grabJoint = Constraint.create({
-                            pointA: { x: mouseX + grabOffset.x, y: mouseY + grabOffset.y },
-                            bodyB: grabBody,
-                            pointB: { x: 0, y: 0 },
-                            stiffness: 0.8,
-                            damping: 0.05,
-                            length: 0,
-                        });
-                        World.add(world, grabJoint);
-                        canvas.style.cursor = 'grabbing';
+                    // Venstre klik: udløs venstre slag hvis klar
+                    if (leftSwingReady && localRagdoll) {
+                        performLeftSwing();
+                        leftSwingReady = false;
                     }
-                }
-                if (e.button === 2) {
-                    mouseDownRight = true;
+                } else if (e.button === 2) {
+                    // Højre klik: udløs højre slag
+                    if (rightSwingReady && localRagdoll) {
+                        performRightSwing();
+                        rightSwingReady = false;
+                    }
                 }
             });
 
             canvas.addEventListener('mouseup', e => {
                 if (e.button === 0) {
-                    mouseDownLeft = false;
-                    releaseGrab();
-                }
-                if (e.button === 2) {
-                    mouseDownRight = false;
+                    leftSwingReady = true;  // klar til næste klik
+                } else if (e.button === 2) {
+                    rightSwingReady = true;
                 }
             });
 
             canvas.addEventListener('contextmenu', e => e.preventDefault());
             canvas.addEventListener('mouseleave', () => {
-                mouseDownLeft = false;
-                mouseDownRight = false;
-                releaseGrab();
+                // Reset klarhed hvis mus forlader
+                leftSwingReady = true;
+                rightSwingReady = true;
             });
 
-            function releaseGrab() {
-                if (grabJoint) {
-                    World.remove(world, grabJoint);
-                    grabJoint = null;
-                }
-                grabBody = null;
-                mouseGrabbing = false;
-                canvas.style.cursor = 'crosshair';
+            function performLeftSwing() {
+                if (!localRagdoll) return;
+                // Kraftigt sving i venstre arm mod musen
+                const swingForce = 0.25; // burst angular velocity
+                const dashForce = 0.05;
+                const torso = localRagdoll.parts.upperTorso;
+
+                // Swing arm
+                const upperArm = localRagdoll.parts.leftUpperArm;
+                const lowerArm = localRagdoll.parts.leftLowerArm;
+                burstSwing(upperArm, lowerArm, mouseX, mouseY, swingForce);
+
+                // Dash mod musen
+                const dx = mouseX - torso.position.x;
+                const dy = mouseY - torso.position.y;
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                Body.applyForce(torso, torso.position, {
+                    x: (dx / len) * dashForce,
+                    y: (dy / len) * dashForce * 0.4,
+                });
             }
 
-            function findNearestLocalBody(mx, my, maxDist) {
-                let nearest = null;
-                let nearestDist = maxDist;
-                if (!localRagdoll) return null;
-                for (const body of localRagdoll.allBodies) {
-                    const dx = body.position.x - mx;
-                    const dy = body.position.y - my;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < nearestDist) {
-                        nearestDist = dist;
-                        nearest = body;
-                    }
-                }
-                return nearest;
+            function performRightSwing() {
+                if (!localRagdoll) return;
+                const swingForce = 0.25;
+                const dashForce = 0.05;
+                const torso = localRagdoll.parts.upperTorso;
+
+                const upperArm = localRagdoll.parts.rightUpperArm;
+                const lowerArm = localRagdoll.parts.rightLowerArm;
+                burstSwing(upperArm, lowerArm, mouseX, mouseY, swingForce);
+
+                const dx = mouseX - torso.position.x;
+                const dy = mouseY - torso.position.y;
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                Body.applyForce(torso, torso.position, {
+                    x: (dx / len) * dashForce,
+                    y: (dy / len) * dashForce * 0.4,
+                });
+            }
+
+            function burstSwing(upperArm, lowerArm, targetX, targetY, force) {
+                const shoulderPos = upperArm.position;
+                const angleToTarget = Math.atan2(targetY - shoulderPos.y, targetX - shoulderPos.x);
+                const currentAngle = upperArm.angle;
+                let angleDiff = angleToTarget - currentAngle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                const swingDir = Math.sign(angleDiff);
+                const magnitude = Math.min(Math.abs(angleDiff) * 1.5, 1.5);
+                Body.setAngularVelocity(upperArm, upperArm.angularVelocity + swingDir * force * magnitude);
+                Body.setAngularVelocity(lowerArm, lowerArm.angularVelocity + swingDir * force * magnitude * 0.8);
             }
 
             // ─────────────────────────────────────
@@ -661,8 +667,8 @@
             }
 
             function applyLocalControls(dt) {
-                const moveForce = 0.018; // reduceret for langsommere bevægelse
-                const jumpForce = 0.08; // øget for bedre hop
+                const moveForce = 0.018;
+                const jumpForce = 0.08;
                 const torso = localRagdoll.parts.upperTorso;
 
                 // Horisontal bevægelse
@@ -679,46 +685,17 @@
                     lastGroundContact = 0;
                 }
 
-                // Aktiv ragdoll – prøv at stå op (svag oprejsende kraft)
-                const uprightTorque = 0.003;
+                // Aktiv ragdoll – stærkere oprejsende kraft (prøver at stå op)
+                const uprightTorque = 0.008; // øget markant
                 const torsoAngle = torso.angle;
-                // Normaliser vinkel til [-PI, PI]
                 let targetAngle = 0;
                 let angleDiff = targetAngle - torsoAngle;
                 while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                 Body.setAngularVelocity(torso, torso.angularVelocity + angleDiff * uprightTorque);
 
-                // Arm-sving med dash mod musen
-                const swingForce = 0.12; // stærkere slag
-                const dashForce = 0.04; // lille dash mod slaget
-
-                if (mouseDownLeft && !mouseGrabbing) {
-                    swingArmToward(localRagdoll.parts.leftUpperArm, localRagdoll.parts.leftLowerArm, mouseX, mouseY,
-                        swingForce);
-                    // Dash lidt mod musen
-                    const dx = mouseX - torso.position.x;
-                    const dy = mouseY - torso.position.y;
-                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                    Body.applyForce(torso, torso.position, {
-                        x: (dx / len) * dashForce,
-                        y: (dy / len) * dashForce * 0.5,
-                    });
-                }
-                if (mouseDownRight) {
-                    swingArmToward(localRagdoll.parts.rightUpperArm, localRagdoll.parts.rightLowerArm, mouseX, mouseY,
-                        swingForce);
-                    const dx = mouseX - torso.position.x;
-                    const dy = mouseY - torso.position.y;
-                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                    Body.applyForce(torso, torso.position, {
-                        x: (dx / len) * dashForce,
-                        y: (dy / len) * dashForce * 0.5,
-                    });
-                }
-
-                // Dæmp arme lidt
-                const armDamping = 0.94;
+                // Dæmp arme en smule, så de ikke snurrer evigt efter et slag
+                const armDamping = 0.92;
                 [
                     localRagdoll.parts.leftUpperArm,
                     localRagdoll.parts.rightUpperArm,
@@ -727,19 +704,6 @@
                 ].forEach(arm => {
                     Body.setAngularVelocity(arm, arm.angularVelocity * armDamping);
                 });
-            }
-
-            function swingArmToward(upperArm, lowerArm, targetX, targetY, force) {
-                const shoulderPos = upperArm.position;
-                const angleToTarget = Math.atan2(targetY - shoulderPos.y, targetX - shoulderPos.x);
-                const currentAngle = upperArm.angle;
-                let angleDiff = angleToTarget - currentAngle;
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                const swingDir = Math.sign(angleDiff);
-                const magnitude = Math.min(Math.abs(angleDiff) * 1.8, 1.2);
-                Body.setAngularVelocity(upperArm, upperArm.angularVelocity + swingDir * force * magnitude);
-                Body.setAngularVelocity(lowerArm, lowerArm.angularVelocity + swingDir * force * magnitude * 0.7);
             }
 
             function checkRespawn() {
@@ -751,13 +715,6 @@
             }
 
             function respawnLocalPlayer() {
-                if (grabJoint) {
-                    World.remove(world, grabJoint);
-                    grabJoint = null;
-                    grabBody = null;
-                    mouseGrabbing = false;
-                    canvas.style.cursor = 'crosshair';
-                }
                 localRagdoll.remove();
                 const sp = getRandomSpawn();
                 localRagdoll = createRagdoll(sp.x, sp.y, localColor, LOCAL_COLLISION_GROUP, true);
@@ -776,8 +733,8 @@
                     let ragdoll = remoteRagdolls.get(id);
                     if (!ragdoll) {
                         // Opret statisk ragdoll for denne spiller
-                        ragdoll = createRagdoll(0, 0, rp.color, LOCAL_COLLISION_GROUP + 100 + id.hashCode ?
-                            id.hashCode() : Math.random() * 1000, false);
+                        ragdoll = createRagdoll(0, 0, rp.color, LOCAL_COLLISION_GROUP + 100 + (id.hashCode ?
+                            id.hashCode() : Math.floor(Math.random() * 1000)), false);
                         remoteRagdolls.set(id, ragdoll);
                     }
 
@@ -837,7 +794,6 @@
                     console.log('Forbindelse mistet, genforbinder...');
                     setConnectionStatus(false);
                     remotePlayers.clear();
-                    // Ryd remote ragdolls
                     for (const [id, ragdoll] of remoteRagdolls) {
                         ragdoll.remove();
                     }
@@ -893,7 +849,6 @@
                         break;
                     case 'playerLeft':
                         remotePlayers.delete(msg.id);
-                        // Ryd remote ragdoll
                         const ragdoll = remoteRagdolls.get(msg.id);
                         if (ragdoll) {
                             ragdoll.remove();
@@ -1093,7 +1048,7 @@
 
                 renderPlatforms();
 
-                // Remote spillere (renderes fra deres interpolerede data, ikke de statiske kroppe)
+                // Remote spillere
                 for (const [id, rp] of remotePlayers) {
                     if (rp.ragdollPartsData) {
                         renderRagdollFromData(rp.ragdollPartsData, rp.color, 0.7);
@@ -1306,6 +1261,7 @@
             requestAnimationFrame(gameLoop);
 
             console.log('🎮 Ragdoll Fight 2.0 klar!');
+            console.log('Enkeltklik slag, stående ragdoll, ingen drag.');
         })();
     </script>
 </body>
