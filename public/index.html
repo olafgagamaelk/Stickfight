@@ -174,7 +174,7 @@
             // ─────────────────────────────────────
             // MATTER.JS OPSÆTNING
             // ─────────────────────────────────────
-            const { Engine, World, Bodies, Body, Constraint, Events } = Matter;
+            const { Engine, World, Bodies, Body, Constraint, Events, Query } = Matter;
 
             const engine = Engine.create();
             engine.gravity.y = 1.2;
@@ -441,6 +441,18 @@
 
                 if (localRagdoll) applyLocalControls(dt);
                 Engine.update(engine, 16.67);
+
+                // ★ STOPPER AL FLING VED KONTAKT MED STATISKE MODSTANDERE
+                if (localRagdoll) {
+                    for (const body of localRagdoll.allBodies) {
+                        const collisions = Query.collides(body, Array.from(remoteRagdolls.values()).flatMap(r => r.allBodies));
+                        if (collisions.length > 0) {
+                            Body.setVelocity(body, { x: 0, y: 0 });
+                            Body.setAngularVelocity(body, 0);
+                        }
+                    }
+                }
+
                 if (localRagdoll) checkRespawn();
                 updateRemoteBodies();
 
@@ -455,7 +467,7 @@
 
             function applyLocalControls(dt) {
                 const moveForce = 0.018;
-                const jumpForce = 0.13;
+                const jumpForce = 1.0;   // ★ sat til 1 for kraftigt hop
                 const torso = localRagdoll.parts.upperTorso;
 
                 if (keys['arrowleft'] || keys['a'] || keys['keya']) Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
@@ -835,7 +847,7 @@
 
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-            console.log('🎮 Ragdoll Fight – Statiske modstandere = ingen flyveture');
+            console.log('🎮 Ragdoll Fight – Hop=1, ingen fling!');
         })();
     </script>
 </body>
