@@ -2,7 +2,7 @@
 <html lang="da">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Ragdoll Fight - Multiplayer</title>
     <style>
         :root {
@@ -133,9 +133,8 @@
             <div id="playerCount">Spillere: 1</div>
         </div>
         <div id="controlsHint">
-            <span>WASD / Piletaster</span> = Bevæg · <span>Mellemrum</span> = Hop ·
-            <span>Venstre klik</span> = Dash + slag venstre · <span>Højre klik</span> = Dash + slag højre ·
-            <span>Træk med mus</span> = Kast dig selv
+            <span>WASD</span> = Bevæg · <span>Mellemrum</span> = Hop ·
+            <span>Venstre klik</span> = Slå & dash · <span>Højre klik</span> = Slå & dash
         </div>
     </div>
 
@@ -143,9 +142,9 @@
     </script>
     <script>
         (function() {
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             // KONFIGURATION
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             const GAME_WIDTH = 1200;
             const GAME_HEIGHT = 700;
             const NETWORK_UPDATE_RATE = 30;
@@ -154,26 +153,32 @@
             const GROUND_Y = 640;
             const GROUND_THICKNESS = 80;
 
+            const DASH_FORCE = 0.22;
+            const PUNCH_FORCE = 0.13;
+            const MOVE_FORCE = 0.009; // langsommere
+            const JUMP_FORCE = 0.085;
+            const COYOTE_TIME = 120; // ms efter man forlader jorden
+            const DASH_COOLDOWN = 350; // ms mellem dashes
+
             const PLAYER_COLORS = [
                 '#4A90D9', '#E74C3C', '#2ECC71', '#F39C12',
                 '#9B59B6', '#1ABC9C', '#E67E22', '#3498DB',
                 '#E91E63', '#00BCD4', '#FF5722', '#8BC34A'
             ];
 
-            // ─────────────────────────────────────
-            // DOM ELEMENTER
-            // ─────────────────────────────────────
+            // ────────────────────────────────
+            // DOM
+            // ────────────────────────────────
             const canvas = document.getElementById('gameCanvas');
             const ctx = canvas.getContext('2d');
             const statusBadge = document.getElementById('statusBadge');
             const playerCountEl = document.getElementById('playerCount');
-
             canvas.width = GAME_WIDTH;
             canvas.height = GAME_HEIGHT;
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             // MATTER.JS OPSÆTNING
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             const {
                 Engine,
                 World,
@@ -183,18 +188,16 @@
                 Events,
                 Composite,
                 Vector,
-                Query,
                 Bounds
             } = Matter;
 
             const engine = Engine.create();
-            engine.gravity.y = 1.5;
-            engine.gravity.x = 0;
+            engine.gravity.y = 1.2;
             const world = engine.world;
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             // PLATFORME
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             const platforms = [];
 
             function createPlatform(x, y, w, h) {
@@ -209,74 +212,57 @@
                 return plat;
             }
 
-            const ground = createPlatform(GAME_WIDTH / 2, GROUND_Y + GROUND_THICKNESS / 2, GAME_WIDTH,
-            GROUND_THICKNESS);
-            const leftWall = Bodies.rectangle(-30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, {
-                isStatic: true,
-                friction: 0.3,
-                restitution: 0.2,
-                label: 'wall',
-            });
-            const rightWall = Bodies.rectangle(GAME_WIDTH + 30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, {
-                isStatic: true,
-                friction: 0.3,
-                restitution: 0.2,
-                label: 'wall',
-            });
-            const ceiling = Bodies.rectangle(GAME_WIDTH / 2, -30, GAME_WIDTH, 60, {
-                isStatic: true,
-                friction: 0.3,
-                restitution: 0.3,
-                label: 'wall',
-            });
+            const ground = createPlatform(GAME_WIDTH / 2, GROUND_Y + GROUND_THICKNESS / 2, GAME_WIDTH, GROUND_THICKNESS);
+            const leftWall = Bodies.rectangle(-30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, { isStatic: true, friction: 0.3,
+                restitution: 0.2, label: 'wall' });
+            const rightWall = Bodies.rectangle(GAME_WIDTH + 30, GAME_HEIGHT / 2, 60, GAME_HEIGHT * 2, { isStatic: true,
+                friction: 0.3, restitution: 0.2, label: 'wall' });
+            const ceiling = Bodies.rectangle(GAME_WIDTH / 2, -30, GAME_WIDTH, 60, { isStatic: true, friction: 0.3,
+                restitution: 0.3, label: 'wall' });
 
-            const plat1 = createPlatform(280, 470, 190, 18);
-            const plat2 = createPlatform(680, 410, 170, 18);
-            const plat3 = createPlatform(500, 290, 150, 18);
-            const plat4 = createPlatform(880, 340, 200, 18);
-            const plat5 = createPlatform(150, 300, 130, 18);
-            const plat6 = createPlatform(1000, 500, 140, 18);
+            createPlatform(280, 470, 190, 18);
+            createPlatform(680, 410, 170, 18);
+            createPlatform(500, 290, 150, 18);
+            createPlatform(880, 340, 200, 18);
+            createPlatform(150, 300, 130, 18);
+            createPlatform(1000, 500, 140, 18);
 
-            World.add(world, [ground, leftWall, rightWall, ceiling, plat1, plat2, plat3, plat4, plat5, plat6]);
+            World.add(world, [ground, leftWall, rightWall, ceiling, ...platforms]);
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             // SPAWN PUNKTER
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             const spawnPoints = [
-                { x: 350, y: 160 },
-                { x: 600, y: 140 },
-                { x: 850, y: 160 },
-                { x: 200, y: 200 },
-                { x: 1000, y: 200 },
-                { x: 500, y: 120 },
-                { x: 700, y: 130 },
+                { x: 350, y: 160 }, { x: 600, y: 140 }, { x: 850, y: 160 },
+                { x: 200, y: 200 }, { x: 1000, y: 200 }, { x: 500, y: 120 }, { x: 700, y: 130 }
             ];
 
             function getRandomSpawn() {
                 return spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
             }
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             // RAGDOLL BYGGER
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             function createRagdoll(spawnX, spawnY, color, collisionGroup) {
                 const parts = {};
                 const constraints = [];
 
                 const headRadius = 17;
-                const upperTorsoW = 28;
-                const upperTorsoH = 38;
-                const lowerTorsoW = 24;
-                const lowerTorsoH = 34;
-                const upperArmW = 11;
-                const upperArmH = 28;
-                const lowerArmW = 9;
-                const lowerArmH = 26;
-                const upperLegW = 13;
-                const upperLegH = 34;
-                const lowerLegW = 11;
-                const lowerLegH = 30;
+                const upperTorsoW = 28,
+                    upperTorsoH = 38;
+                const lowerTorsoW = 24,
+                    lowerTorsoH = 34;
+                const upperArmW = 11,
+                    upperArmH = 28;
+                const lowerArmW = 9,
+                    lowerArmH = 26;
+                const upperLegW = 13,
+                    upperLegH = 34;
+                const lowerLegW = 11,
+                    lowerLegH = 30;
 
+                // Start oprejst
                 const headY = spawnY;
                 const upperTorsoY = headY + headRadius + upperTorsoH / 2;
                 const lowerTorsoY = upperTorsoY + upperTorsoH / 2 + lowerTorsoH / 2;
@@ -284,267 +270,152 @@
                 const hipY = upperTorsoY + upperTorsoH / 2 - 4;
 
                 parts.head = Bodies.circle(spawnX, headY, headRadius, {
-                    label: 'head',
-                    restitution: 0.2,
-                    friction: 0.5,
-                    density: 0.002,
-                    collisionFilter: { group: collisionGroup },
+                    label: 'head', restitution: 0.2, friction: 0.5, density: 0.002,
+                    collisionFilter: { group: collisionGroup }
                 });
-
                 parts.upperTorso = Bodies.rectangle(spawnX, upperTorsoY, upperTorsoW, upperTorsoH, {
-                    label: 'upperTorso',
-                    restitution: 0.2,
-                    friction: 0.5,
-                    density: 0.003,
-                    collisionFilter: { group: collisionGroup },
+                    label: 'upperTorso', restitution: 0.2, friction: 0.5, density: 0.003,
+                    collisionFilter: { group: collisionGroup }
                 });
-
                 parts.lowerTorso = Bodies.rectangle(spawnX, lowerTorsoY, lowerTorsoW, lowerTorsoH, {
-                    label: 'lowerTorso',
-                    restitution: 0.2,
-                    friction: 0.5,
-                    density: 0.0025,
-                    collisionFilter: { group: collisionGroup },
+                    label: 'lowerTorso', restitution: 0.2, friction: 0.5, density: 0.0025,
+                    collisionFilter: { group: collisionGroup }
                 });
 
                 const armOffsetX = upperTorsoW / 2 + upperArmW / 2 - 1;
-                parts.leftUpperArm = Bodies.rectangle(spawnX - armOffsetX, shoulderY + upperArmH / 2, upperArmW,
-                    upperArmH, {
-                        label: 'leftUpperArm',
-                        restitution: 0.2,
-                        friction: 0.5,
-                        density: 0.0015,
-                        collisionFilter: { group: collisionGroup },
-                    });
-                parts.rightUpperArm = Bodies.rectangle(spawnX + armOffsetX, shoulderY + upperArmH / 2, upperArmW,
-                    upperArmH, {
-                        label: 'rightUpperArm',
-                        restitution: 0.2,
-                        friction: 0.5,
-                        density: 0.0015,
-                        collisionFilter: { group: collisionGroup },
-                    });
+                parts.leftUpperArm = Bodies.rectangle(spawnX - armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH, {
+                    label: 'leftUpperArm', restitution: 0.2, friction: 0.5, density: 0.0015,
+                    collisionFilter: { group: collisionGroup }
+                });
+                parts.rightUpperArm = Bodies.rectangle(spawnX + armOffsetX, shoulderY + upperArmH / 2, upperArmW, upperArmH,
+                {
+                    label: 'rightUpperArm', restitution: 0.2, friction: 0.5, density: 0.0015,
+                    collisionFilter: { group: collisionGroup }
+                });
 
                 const lowerArmTopY = shoulderY + upperArmH;
                 parts.leftLowerArm = Bodies.rectangle(spawnX - armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW,
                     lowerArmH, {
-                        label: 'leftLowerArm',
-                        restitution: 0.2,
-                        friction: 0.5,
-                        density: 0.0012,
-                        collisionFilter: { group: collisionGroup },
+                        label: 'leftLowerArm', restitution: 0.2, friction: 0.5, density: 0.0012,
+                        collisionFilter: { group: collisionGroup }
                     });
                 parts.rightLowerArm = Bodies.rectangle(spawnX + armOffsetX, lowerArmTopY + lowerArmH / 2, lowerArmW,
                     lowerArmH, {
-                        label: 'rightLowerArm',
-                        restitution: 0.2,
-                        friction: 0.5,
-                        density: 0.0012,
-                        collisionFilter: { group: collisionGroup },
+                        label: 'rightLowerArm', restitution: 0.2, friction: 0.5, density: 0.0012,
+                        collisionFilter: { group: collisionGroup }
                     });
 
                 const legOffsetX = lowerTorsoW / 3;
                 const upperLegTopY = lowerTorsoY + lowerTorsoH / 2;
-                parts.leftUpperLeg = Bodies.rectangle(spawnX - legOffsetX, upperLegTopY + upperLegH / 2, upperLegW,
-                    upperLegH, {
-                        label: 'leftUpperLeg',
-                        restitution: 0.2,
-                        friction: 0.6,
-                        density: 0.002,
-                        collisionFilter: { group: collisionGroup },
-                    });
+                parts.leftUpperLeg = Bodies.rectangle(spawnX - legOffsetX, upperLegTopY + upperLegH / 2, upperLegW, upperLegH,
+                {
+                    label: 'leftUpperLeg', restitution: 0.2, friction: 0.6, density: 0.002,
+                    collisionFilter: { group: collisionGroup }
+                });
                 parts.rightUpperLeg = Bodies.rectangle(spawnX + legOffsetX, upperLegTopY + upperLegH / 2, upperLegW,
                     upperLegH, {
-                        label: 'rightUpperLeg',
-                        restitution: 0.2,
-                        friction: 0.6,
-                        density: 0.002,
-                        collisionFilter: { group: collisionGroup },
+                        label: 'rightUpperLeg', restitution: 0.2, friction: 0.6, density: 0.002,
+                        collisionFilter: { group: collisionGroup }
                     });
 
                 const lowerLegTopY = upperLegTopY + upperLegH;
                 parts.leftLowerLeg = Bodies.rectangle(spawnX - legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW,
                     lowerLegH, {
-                        label: 'leftLowerLeg',
-                        restitution: 0.2,
-                        friction: 0.6,
-                        density: 0.0018,
-                        collisionFilter: { group: collisionGroup },
+                        label: 'leftLowerLeg', restitution: 0.2, friction: 0.6, density: 0.0018,
+                        collisionFilter: { group: collisionGroup }
                     });
                 parts.rightLowerLeg = Bodies.rectangle(spawnX + legOffsetX, lowerLegTopY + lowerLegH / 2, lowerLegW,
                     lowerLegH, {
-                        label: 'rightLowerLeg',
-                        restitution: 0.2,
-                        friction: 0.6,
-                        density: 0.0018,
-                        collisionFilter: { group: collisionGroup },
+                        label: 'rightLowerLeg', restitution: 0.2, friction: 0.6, density: 0.0018,
+                        collisionFilter: { group: collisionGroup }
                     });
 
                 const stiff = 0.6;
                 const damp = 0.08;
 
+                // Led (uændrede)
                 constraints.push(Constraint.create({
-                    bodyA: parts.head,
-                    bodyB: parts.upperTorso,
-                    pointA: { x: 0, y: headRadius },
-                    pointB: { x: 0, y: -upperTorsoH / 2 },
-                    stiffness: stiff,
-                    damping: damp,
-                    length: 2,
+                    bodyA: parts.head, bodyB: parts.upperTorso,
+                    pointA: { x: 0, y: headRadius }, pointB: { x: 0, y: -upperTorsoH / 2 },
+                    stiffness: stiff, damping: damp, length: 2
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.upperTorso,
-                    bodyB: parts.lowerTorso,
-                    pointA: { x: 0, y: upperTorsoH / 2 },
-                    pointB: { x: 0, y: -lowerTorsoH / 2 },
-                    stiffness: stiff * 1.2,
-                    damping: damp,
-                    length: 1,
+                    bodyA: parts.upperTorso, bodyB: parts.lowerTorso,
+                    pointA: { x: 0, y: upperTorsoH / 2 }, pointB: { x: 0, y: -lowerTorsoH / 2 },
+                    stiffness: stiff * 1.2, damping: damp, length: 1
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.upperTorso,
-                    bodyB: parts.leftUpperArm,
+                    bodyA: parts.upperTorso, bodyB: parts.leftUpperArm,
                     pointA: { x: -upperTorsoW / 2 + 3, y: -upperTorsoH / 2 + 6 },
-                    pointB: { x: 0, y: -upperArmH / 2 },
-                    stiffness: stiff * 0.7,
-                    damping: damp * 1.5,
-                    length: 1,
+                    pointB: { x: 0, y: -upperArmH / 2 }, stiffness: stiff * 0.7, damping: damp * 1.5, length: 1
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.upperTorso,
-                    bodyB: parts.rightUpperArm,
+                    bodyA: parts.upperTorso, bodyB: parts.rightUpperArm,
                     pointA: { x: upperTorsoW / 2 - 3, y: -upperTorsoH / 2 + 6 },
-                    pointB: { x: 0, y: -upperArmH / 2 },
-                    stiffness: stiff * 0.7,
-                    damping: damp * 1.5,
-                    length: 1,
+                    pointB: { x: 0, y: -upperArmH / 2 }, stiffness: stiff * 0.7, damping: damp * 1.5, length: 1
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.leftUpperArm,
-                    bodyB: parts.leftLowerArm,
-                    pointA: { x: 0, y: upperArmH / 2 },
-                    pointB: { x: 0, y: -lowerArmH / 2 },
-                    stiffness: stiff * 0.5,
-                    damping: damp * 2,
-                    length: 1,
+                    bodyA: parts.leftUpperArm, bodyB: parts.leftLowerArm,
+                    pointA: { x: 0, y: upperArmH / 2 }, pointB: { x: 0, y: -lowerArmH / 2 },
+                    stiffness: stiff * 0.5, damping: damp * 2, length: 1
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.rightUpperArm,
-                    bodyB: parts.rightLowerArm,
-                    pointA: { x: 0, y: upperArmH / 2 },
-                    pointB: { x: 0, y: -lowerArmH / 2 },
-                    stiffness: stiff * 0.5,
-                    damping: damp * 2,
-                    length: 1,
+                    bodyA: parts.rightUpperArm, bodyB: parts.rightLowerArm,
+                    pointA: { x: 0, y: upperArmH / 2 }, pointB: { x: 0, y: -lowerArmH / 2 },
+                    stiffness: stiff * 0.5, damping: damp * 2, length: 1
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.lowerTorso,
-                    bodyB: parts.leftUpperLeg,
+                    bodyA: parts.lowerTorso, bodyB: parts.leftUpperLeg,
                     pointA: { x: -lowerTorsoW / 3, y: lowerTorsoH / 2 },
-                    pointB: { x: 0, y: -upperLegH / 2 },
-                    stiffness: stiff * 0.9,
-                    damping: damp,
-                    length: 2,
+                    pointB: { x: 0, y: -upperLegH / 2 }, stiffness: stiff * 0.9, damping: damp, length: 2
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.lowerTorso,
-                    bodyB: parts.rightUpperLeg,
+                    bodyA: parts.lowerTorso, bodyB: parts.rightUpperLeg,
                     pointA: { x: lowerTorsoW / 3, y: lowerTorsoH / 2 },
-                    pointB: { x: 0, y: -upperLegH / 2 },
-                    stiffness: stiff * 0.9,
-                    damping: damp,
-                    length: 2,
+                    pointB: { x: 0, y: -upperLegH / 2 }, stiffness: stiff * 0.9, damping: damp, length: 2
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.leftUpperLeg,
-                    bodyB: parts.leftLowerLeg,
-                    pointA: { x: 0, y: upperLegH / 2 },
-                    pointB: { x: 0, y: -lowerLegH / 2 },
-                    stiffness: stiff * 0.6,
-                    damping: damp * 1.8,
-                    length: 1,
+                    bodyA: parts.leftUpperLeg, bodyB: parts.leftLowerLeg,
+                    pointA: { x: 0, y: upperLegH / 2 }, pointB: { x: 0, y: -lowerLegH / 2 },
+                    stiffness: stiff * 0.6, damping: damp * 1.8, length: 1
                 }));
                 constraints.push(Constraint.create({
-                    bodyA: parts.rightUpperLeg,
-                    bodyB: parts.rightLowerLeg,
-                    pointA: { x: 0, y: upperLegH / 2 },
-                    pointB: { x: 0, y: -lowerLegH / 2 },
-                    stiffness: stiff * 0.6,
-                    damping: damp * 1.8,
-                    length: 1,
+                    bodyA: parts.rightUpperLeg, bodyB: parts.rightLowerLeg,
+                    pointA: { x: 0, y: upperLegH / 2 }, pointB: { x: 0, y: -lowerLegH / 2 },
+                    stiffness: stiff * 0.6, damping: damp * 1.8, length: 1
                 }));
 
                 const allBodies = Object.values(parts);
                 World.add(world, allBodies);
                 constraints.forEach(c => World.add(world, c));
 
-                return {
-                    parts,
-                    constraints,
-                    color,
-                    allBodies,
-                    remove() {
-                        constraints.forEach(c => World.remove(world, c));
-                        allBodies.forEach(b => World.remove(world, b));
-                    },
-                };
+                return { parts, constraints, color, allBodies, remove() { constraints.forEach(c => World.remove(world,
+                        c));
+                        allBodies.forEach(b => World.remove(world, b)); } };
             }
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             // LOKAL SPILLER
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             let localPlayerId = null;
             let localColor = PLAYER_COLORS[0];
             const LOCAL_COLLISION_GROUP = -1;
-
             const spawn = getRandomSpawn();
             let localRagdoll = createRagdoll(spawn.x, spawn.y, localColor, LOCAL_COLLISION_GROUP);
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             // INPUT STATE
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             const keys = {};
-            let mouseX = GAME_WIDTH / 2;
-            let mouseY = GAME_HEIGHT / 2;
-            let mouseGrabbing = false;
-            let grabJoint = null;
-            let grabBody = null;
-            let grabOffset = { x: 0, y: 0 };
-
-            // Angrebs-nedkøling
-            let lastLeftAttack = 0;
-            let lastRightAttack = 0;
-            const ATTACK_COOLDOWN = 400; // ms
-
-            // Hop-detektion
-            let lastGroundContact = 0;
-            const GROUND_WINDOW = 280; // ms
-
-            Events.on(engine, 'collisionStart', (event) => {
-                for (const pair of event.pairs) {
-                    const bodies = [pair.bodyA, pair.bodyB];
-                    const hasStatic = bodies.some(b => b.isStatic && (b.label === 'platform' || b.label ===
-                        'ground' || b.label === 'wall'));
-                    const hasRagdollPart = bodies.some(b =>
-                        b.label && (b.label.includes('Leg') || b.label.includes('Torso') || b.label ===
-                            'head')
-                    );
-                    if (hasStatic && hasRagdollPart) {
-                        lastGroundContact = performance.now();
-                    }
-                }
-            });
-
-            function isGrounded() {
-                return (performance.now() - lastGroundContact) < GROUND_WINDOW;
-            }
+            let mouseX = GAME_WIDTH / 2,
+                mouseY = GAME_HEIGHT / 2;
+            let lastDashTime = 0;
+            let coyoteTimer = 0;
 
             window.addEventListener('keydown', e => {
                 keys[e.key.toLowerCase()] = true;
                 keys[e.code] = true;
-                if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                    e.preventDefault();
-                }
+                if ([' ', 'arrowup', 'arrowdown'].includes(e.key.toLowerCase())) e.preventDefault();
             });
             window.addEventListener('keyup', e => {
                 keys[e.key.toLowerCase()] = false;
@@ -553,139 +424,110 @@
 
             canvas.addEventListener('mousemove', e => {
                 const rect = canvas.getBoundingClientRect();
-                const scaleX = GAME_WIDTH / rect.width;
-                const scaleY = GAME_HEIGHT / rect.height;
-                mouseX = (e.clientX - rect.left) * scaleX;
-                mouseY = (e.clientY - rect.top) * scaleY;
-
-                if (mouseGrabbing && grabBody && grabJoint) {
-                    const targetPos = { x: mouseX + grabOffset.x, y: mouseY + grabOffset.y };
-                    Constraint.pointA(grabJoint, targetPos);
-                }
+                mouseX = (e.clientX - rect.left) * (GAME_WIDTH / rect.width);
+                mouseY = (e.clientY - rect.top) * (GAME_HEIGHT / rect.height);
             });
 
             canvas.addEventListener('mousedown', e => {
-                if (e.button === 0) {
-                    // Venstre klik: angreb eller grab
-                    const nearest = findNearestLocalBody(mouseX, mouseY, 50);
-                    if (nearest && !mouseGrabbing) {
-                        // Start grab
-                        mouseGrabbing = true;
-                        grabBody = nearest;
-                        grabOffset = {
-                            x: nearest.position.x - mouseX,
-                            y: nearest.position.y - mouseY,
-                        };
-                        grabJoint = Constraint.create({
-                            pointA: { x: mouseX + grabOffset.x, y: mouseY + grabOffset.y },
-                            bodyB: grabBody,
-                            pointB: { x: 0, y: 0 },
-                            stiffness: 0.8,
-                            damping: 0.05,
-                            length: 0,
-                        });
-                        World.add(world, grabJoint);
-                        canvas.style.cursor = 'grabbing';
-                    } else {
-                        // Udfør venstre dash-angreb
-                        performAttack('left');
-                    }
-                }
-                if (e.button === 2) {
-                    // Højreklik: angreb (uden grab)
-                    performAttack('right');
-                }
-            });
-
-            canvas.addEventListener('mouseup', e => {
-                if (e.button === 0) {
-                    releaseGrab();
-                }
-            });
-
-            canvas.addEventListener('contextmenu', e => e.preventDefault());
-            canvas.addEventListener('mouseleave', () => {
-                releaseGrab();
-            });
-
-            function releaseGrab() {
-                if (grabJoint) {
-                    World.remove(world, grabJoint);
-                    grabJoint = null;
-                }
-                grabBody = null;
-                mouseGrabbing = false;
-                canvas.style.cursor = 'crosshair';
-            }
-
-            function findNearestLocalBody(mx, my, maxDist) {
-                let nearest = null;
-                let nearestDist = maxDist;
-                if (!localRagdoll) return null;
-                for (const body of localRagdoll.allBodies) {
-                    const dx = body.position.x - mx;
-                    const dy = body.position.y - my;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < nearestDist) {
-                        nearestDist = dist;
-                        nearest = body;
-                    }
-                }
-                return nearest;
-            }
-
-            function performAttack(side) {
-                if (!localRagdoll) return;
+                e.preventDefault();
                 const now = performance.now();
-                const lastAttack = side === 'left' ? lastLeftAttack : lastRightAttack;
-                if (now - lastAttack < ATTACK_COOLDOWN) return;
+                if (now - lastDashTime < DASH_COOLDOWN) return;
 
-                if (side === 'left') lastLeftAttack = now;
-                else lastRightAttack = now;
+                if (e.button === 0 || e.button === 2) {
+                    dashAndPunch(e.button === 0 ? 'left' : 'right');
+                    lastDashTime = now;
+                }
+            });
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
 
+            function dashAndPunch(side) {
+                if (!localRagdoll) return;
                 const torso = localRagdoll.parts.upperTorso;
-                const targetDir = Vector.normalise({
-                    x: mouseX - torso.position.x,
-                    y: mouseY - torso.position.y,
-                });
-                const dashForce = 0.09;
-                Body.applyForce(torso, torso.position, {
-                    x: targetDir.x * dashForce,
-                    y: targetDir.y * dashForce,
-                });
+                const dirX = mouseX - torso.position.x;
+                const dirY = mouseY - torso.position.y;
+                const dist = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+                const normX = dirX / dist;
+                const normY = dirY / dist;
 
-                // Sving armen i den retning
-                const arm = side === 'left' ? localRagdoll.parts.leftUpperArm : localRagdoll.parts
+                // Dash: kraft i museretningen på overkroppen
+                Body.applyForce(torso, torso.position, { x: normX * DASH_FORCE, y: normY * DASH_FORCE });
+
+                // Slå: drej armen hurtigt mod musen
+                const upperArm = side === 'left' ? localRagdoll.parts.leftUpperArm : localRagdoll.parts
                     .rightUpperArm;
-                const lowerArm = side === 'left' ? localRagdoll.parts.leftLowerArm : localRagdoll.parts
-                    .rightLowerArm;
-
-                const armAngle = Math.atan2(targetDir.y, targetDir.x);
-                Body.setAngularVelocity(arm, armAngle * 0.5);
-                Body.setAngularVelocity(lowerArm, armAngle * 0.6);
-                // Ekstra spin
-                Body.applyForce(arm, arm.position, { x: targetDir.x * 0.02, y: targetDir.y * 0.02 });
+                const lowerArm = side === 'left' ? localRagdoll.parts.leftLowerArm : localRagdoll.parts.rightLowerArm;
+                const angleToTarget = Math.atan2(dirY, dirX);
+                const currentAngle = upperArm.angle;
+                let diff = angleToTarget - currentAngle;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                Body.setAngularVelocity(upperArm, diff * 0.25);
+                Body.setAngularVelocity(lowerArm, diff * 0.2);
             }
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
+            // GROUND DETEKTION (coyote time)
+            // ────────────────────────────────
+            Events.on(engine, 'collisionStart', (event) => {
+                for (const pair of event.pairs) {
+                    const bodies = [pair.bodyA, pair.bodyB];
+                    const hasStatic = bodies.some(b => b.isStatic && ['platform', 'ground', 'wall'].includes(b
+                        .label));
+                    const hasLeg = bodies.some(b => ['leftLowerLeg', 'rightLowerLeg', 'leftUpperLeg',
+                        'rightUpperLeg', 'lowerTorso'
+                    ].includes(b.label));
+                    if (hasStatic && hasLeg) {
+                        coyoteTimer = performance.now();
+                    }
+                }
+            });
+
+            function isGrounded() {
+                return (performance.now() - coyoteTimer) < COYOTE_TIME;
+            }
+
+            // ────────────────────────────────
+            // ACTIVE RAGDOLL BALANCE
+            // ────────────────────────────────
+            function applyBalanceForces(dt) {
+                if (!localRagdoll) return;
+                const torso = localRagdoll.parts.upperTorso;
+                const targetAngle = 0; // oprejst
+                let angleDiff = targetAngle - torso.angle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                const torque = angleDiff * 0.008;
+                Body.setAngularVelocity(torso, torso.angularVelocity + torque);
+
+                // Træk benene ind under kroppen
+                const com = torso.position;
+                for (const legKey of ['leftUpperLeg', 'rightUpperLeg']) {
+                    const leg = localRagdoll.parts[legKey];
+                    const dx = com.x - leg.position.x;
+                    const force = dx * 0.0004;
+                    Body.applyForce(leg, leg.position, { x: force, y: 0 });
+                }
+            }
+
+            // ────────────────────────────────
             // SPIL LOOP
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             let lastNetworkSend = 0;
             let lastFrameTime = performance.now();
 
             function gameLoop(timestamp) {
                 requestAnimationFrame(gameLoop);
-
                 const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.1);
                 lastFrameTime = timestamp;
 
                 if (localRagdoll) {
                     applyLocalControls(dt);
-                    balanceRagdoll();
-                    checkRespawn();
+                    applyBalanceForces(dt);
                 }
 
                 Engine.update(engine, 16.67);
+
+                if (localRagdoll) checkRespawn();
 
                 if (timestamp - lastNetworkSend > NETWORK_INTERVAL) {
                     lastNetworkSend = timestamp;
@@ -693,43 +535,20 @@
                 }
 
                 updateRemoteInterpolation(timestamp);
+                updateRemotePhysicsBodies();
                 render(timestamp);
             }
 
             function applyLocalControls(dt) {
-                const moveForce = 0.015;
-                const jumpForce = 0.09;
                 const torso = localRagdoll.parts.upperTorso;
+                // Horisontal bevægelse (langsommere)
+                if (keys['arrowleft'] || keys['a']) Body.applyForce(torso, torso.position, { x: -MOVE_FORCE, y: 0 });
+                if (keys['arrowright'] || keys['d']) Body.applyForce(torso, torso.position, { x: MOVE_FORCE, y: 0 });
 
-                if (keys['arrowleft'] || keys['a'] || keys['keya']) {
-                    Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
-                }
-                if (keys['arrowright'] || keys['d'] || keys['keyd']) {
-                    Body.applyForce(torso, torso.position, { x: moveForce, y: 0 });
-                }
-
-                if ((keys['arrowup'] || keys['w'] || keys['keyw'] || keys[' '] || keys['space']) && isGrounded()) {
-                    Body.applyForce(torso, torso.position, { x: 0, y: -jumpForce });
-                    lastGroundContact = 0;
-                }
-            }
-
-            function balanceRagdoll() {
-                if (!localRagdoll) return;
-                const torso = localRagdoll.parts.upperTorso;
-                const targetAngle = 0;
-                const angleError = targetAngle - torso.angle;
-                const torqueStiffness = 0.06;
-                const torqueDamping = 0.03;
-                const correctionTorque = angleError * torqueStiffness - torso.angularVelocity * torqueDamping;
-                Body.setTorque(torso, correctionTorque);
-
-                // Træk benene ind under kroppen
-                const lowerTorso = localRagdoll.parts.lowerTorso;
-                const desiredLegX = lowerTorso.position.x;
-                for (const legPart of [localRagdoll.parts.leftUpperLeg, localRagdoll.parts.rightUpperLeg]) {
-                    const dx = desiredLegX - legPart.position.x;
-                    Body.applyForce(legPart, legPart.position, { x: dx * 0.004, y: 0.01 });
+                // Hop
+                if ((keys[' '] || keys['space'] || keys['arrowup'] || keys['w']) && isGrounded()) {
+                    Body.applyForce(torso, torso.position, { x: 0, y: -JUMP_FORCE });
+                    coyoteTimer = 0; // nulstil så man ikke kan hoppe igen med det samme
                 }
             }
 
@@ -742,16 +561,15 @@
             }
 
             function respawnLocalPlayer() {
-                releaseGrab();
                 localRagdoll.remove();
                 const sp = getRandomSpawn();
                 localRagdoll = createRagdoll(sp.x, sp.y, localColor, LOCAL_COLLISION_GROUP);
-                lastGroundContact = 0;
+                coyoteTimer = 0;
             }
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             // NETVÆRK
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             let ws = null;
             let connected = false;
             const remotePlayers = new Map();
@@ -759,54 +577,26 @@
             function connectWebSocket() {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${protocol}//${window.location.host}`;
+                try { ws = new WebSocket(wsUrl); } catch (e) { setTimeout(connectWebSocket, 3000); return; }
 
-                try {
-                    ws = new WebSocket(wsUrl);
-                } catch (e) {
-                    console.error('WebSocket forbindelsesfejl:', e);
-                    setConnectionStatus(false);
-                    setTimeout(connectWebSocket, 3000);
-                    return;
-                }
-
-                ws.onopen = () => {
-                    console.log('Forbundet til server!');
-                    setConnectionStatus(true);
-                };
-
-                ws.onmessage = (event) => {
-                    const msg = JSON.parse(event.data);
-                    handleServerMessage(msg);
-                };
-
-                ws.onclose = () => {
-                    console.log('Forbindelse mistet, genforbinder...');
-                    setConnectionStatus(false);
+                ws.onopen = () => setConnectionStatus(true);
+                ws.onmessage = (event) => handleServerMessage(JSON.parse(event.data));
+                ws.onclose = () => { setConnectionStatus(false);
                     remotePlayers.clear();
-                    setTimeout(connectWebSocket, 2000);
-                };
-
-                ws.onerror = (err) => {
-                    console.error('WebSocket fejl:', err);
-                    ws.close();
-                };
+                    updateRemotePhysicsBodies();
+                    setTimeout(connectWebSocket, 2000); };
+                ws.onerror = () => ws.close();
             }
 
             function setConnectionStatus(status) {
                 connected = status;
-                if (status) {
-                    statusBadge.textContent = '● Forbundet';
-                    statusBadge.className = 'connected';
-                } else {
-                    statusBadge.textContent = '● Afbrudt';
-                    statusBadge.className = 'disconnected';
-                }
+                statusBadge.textContent = status ? '● Forbundet' : '● Afbrudt';
+                statusBadge.className = status ? 'connected' : 'disconnected';
                 updatePlayerCount();
             }
 
             function updatePlayerCount() {
-                const count = 1 + remotePlayers.size;
-                playerCountEl.textContent = `Spillere: ${count}`;
+                playerCountEl.textContent = `Spillere: ${1 + remotePlayers.size}`;
             }
 
             function handleServerMessage(msg) {
@@ -815,60 +605,62 @@
                         localPlayerId = msg.id;
                         localColor = msg.color;
                         if (localRagdoll) localRagdoll.color = localColor;
-                        updatePlayerCount();
                         break;
                     case 'playerJoined':
-                        if (msg.id !== localPlayerId) {
+                        if (msg.id !== localPlayerId && !remotePlayers.has(msg.id)) {
                             remotePlayers.set(msg.id, {
                                 color: msg.color,
                                 states: [],
                                 lastUpdate: performance.now(),
                                 ragdollPartsData: null,
+                                bodies: null // til fysiske kroppe
                             });
                             updatePlayerCount();
                         }
                         break;
                     case 'playerLeft':
-                        remotePlayers.delete(msg.id);
-                        updatePlayerCount();
+                        removeRemotePlayer(msg.id);
                         break;
                     case 'playerUpdate':
-                        if (msg.id !== localPlayerId && remotePlayers.has(msg.id)) {
-                            const rp = remotePlayers.get(msg.id);
-                            rp.states.push({
-                                timestamp: performance.now(),
-                                parts: msg.parts,
-                            });
+                        if (msg.id !== localPlayerId) {
+                            let rp = remotePlayers.get(msg.id);
+                            if (!rp) {
+                                rp = { color: msg.color || '#888', states: [], lastUpdate: performance.now(),
+                                    ragdollPartsData: null, bodies: null };
+                                remotePlayers.set(msg.id, rp);
+                                updatePlayerCount();
+                            }
+                            rp.states.push({ timestamp: performance.now(), parts: msg.parts });
                             if (rp.states.length > 3) rp.states.shift();
                             rp.lastUpdate = performance.now();
                         }
                         break;
                     case 'hit':
                         if (msg.targetId === localPlayerId && localRagdoll) {
-                            applyKnockback(msg.impulse);
+                            const torso = localRagdoll.parts.upperTorso;
+                            Body.applyForce(torso, torso.position, { x: msg.impulse.x * 0.18, y: msg.impulse.y * 0.18 });
+                            for (const b of localRagdoll.allBodies) {
+                                Body.setVelocity(b, {
+                                    x: b.velocity.x + msg.impulse.x * 0.1,
+                                    y: b.velocity.y + msg.impulse.y * 0.1
+                                });
+                            }
                         }
                         break;
                 }
             }
 
-            function applyKnockback(impulse) {
-                if (!localRagdoll) return;
-                const torso = localRagdoll.parts.upperTorso;
-                Body.applyForce(torso, torso.position, {
-                    x: impulse.x * 0.25,
-                    y: impulse.y * 0.25,
-                });
-                for (const body of localRagdoll.allBodies) {
-                    Body.setVelocity(body, {
-                        x: body.velocity.x + impulse.x * 0.1,
-                        y: body.velocity.y + impulse.y * 0.1,
-                    });
+            function removeRemotePlayer(id) {
+                const rp = remotePlayers.get(id);
+                if (rp && rp.bodies) {
+                    rp.bodies.forEach(b => World.remove(world, b));
                 }
+                remotePlayers.delete(id);
+                updatePlayerCount();
             }
 
             function sendNetworkUpdate() {
-                if (!connected || !ws || ws.readyState !== WebSocket.OPEN || !localRagdoll) return;
-
+                if (!connected || ws.readyState !== WebSocket.OPEN || !localRagdoll) return;
                 const partsData = {};
                 for (const [key, body] of Object.entries(localRagdoll.parts)) {
                     partsData[key] = {
@@ -877,63 +669,47 @@
                         a: body.angle,
                         vx: body.velocity.x,
                         vy: body.velocity.y,
-                        va: body.angularVelocity,
+                        va: body.angularVelocity
                     };
                 }
-
-                ws.send(JSON.stringify({
-                    type: 'update',
-                    parts: partsData,
-                }));
-
+                ws.send(JSON.stringify({ type: 'update', parts: partsData }));
                 checkHitsOnRemotePlayers();
             }
 
             function checkHitsOnRemotePlayers() {
                 if (!localRagdoll || remotePlayers.size === 0) return;
-
                 const leftHand = getHandWorldPos(localRagdoll.parts.leftLowerArm, -1);
                 const rightHand = getHandWorldPos(localRagdoll.parts.rightLowerArm, 1);
                 const hands = [
-                    { pos: leftHand, body: localRagdoll.parts.leftLowerArm },
-                    { pos: rightHand, body: localRagdoll.parts.rightLowerArm },
+                    { pos: leftHand, arm: localRagdoll.parts.leftLowerArm },
+                    { pos: rightHand, arm: localRagdoll.parts.rightLowerArm }
                 ];
 
                 for (const hand of hands) {
-                    const speed = Math.abs(hand.body.velocity.x) + Math.abs(hand.body.velocity.y);
+                    const speed = Math.abs(hand.arm.angularVelocity) + Vector.magnitude(hand.arm.velocity);
                     if (speed < 7) continue;
-
                     for (const [remoteId, rp] of remotePlayers) {
                         if (!rp.ragdollPartsData) continue;
                         const head = rp.ragdollPartsData.head;
                         const torso = rp.ragdollPartsData.upperTorso;
                         if (!head || !torso) continue;
-
                         const targets = [
-                            { x: head.x, y: head.y, radius: 22 },
-                            { x: torso.x, y: torso.y, radius: 28 },
+                            { x: head.x, y: head.y, radius: 18 },
+                            { x: torso.x, y: torso.y, radius: 25 }
                         ];
-
-                        for (const target of targets) {
-                            const dx = hand.pos.x - target.x;
-                            const dy = hand.pos.y - target.y;
+                        for (const t of targets) {
+                            const dx = hand.pos.x - t.x;
+                            const dy = hand.pos.y - t.y;
                             const dist = Math.sqrt(dx * dx + dy * dy);
-                            if (dist < target.radius + 18) {
-                                const impulse = {
-                                    x: hand.body.velocity.x * 4 + (dx / (dist || 1)) * 10,
-                                    y: hand.body.velocity.y * 4 + (dy / (dist || 1)) * 10 - 6,
-                                };
+                            if (dist < t.radius + 12) {
                                 ws.send(JSON.stringify({
                                     type: 'hit',
                                     targetId: remoteId,
-                                    impulse,
+                                    impulse: {
+                                        x: hand.arm.velocity.x * 4 + (dx / (dist || 1)) * 10,
+                                        y: hand.arm.velocity.y * 4 + (dy / (dist || 1)) * 10 - 6
+                                    }
                                 }));
-                                // Rekyl på lokal spiller
-                                Body.applyForce(localRagdoll.parts.upperTorso, localRagdoll.parts.upperTorso
-                                    .position, {
-                                        x: -impulse.x * 0.2,
-                                        y: -impulse.y * 0.2,
-                                    });
                                 break;
                             }
                         }
@@ -946,59 +722,118 @@
                 const halfLen = 13;
                 return {
                     x: arm.position.x + Math.cos(angle) * halfLen * side * 0.7 + Math.sin(angle) * halfLen,
-                    y: arm.position.y + Math.sin(angle) * halfLen * side * 0.7 - Math.cos(angle) * halfLen,
+                    y: arm.position.y + Math.sin(angle) * halfLen * side * 0.7 - Math.cos(angle) * halfLen
                 };
             }
 
             function updateRemoteInterpolation(timestamp) {
                 for (const [id, rp] of remotePlayers) {
                     if (rp.states.length >= 2) {
-                        const now = timestamp;
-                        let s0 = rp.states[0];
-                        let s1 = rp.states[rp.states.length - 1];
+                        let s0 = rp.states[0],
+                            s1 = rp.states[rp.states.length - 1];
                         for (let i = 0; i < rp.states.length - 1; i++) {
-                            if (rp.states[i + 1].timestamp >= now) {
-                                s0 = rp.states[i];
-                                s1 = rp.states[i + 1];
-                                break;
-                            }
+                            if (rp.states[i + 1].timestamp >= timestamp) { s0 = rp.states[i];
+                                s1 = rp.states[i + 1]; break; }
                         }
                         const tDiff = s1.timestamp - s0.timestamp;
-                        let alpha = 0;
-                        if (tDiff > 0) alpha = Math.max(0, Math.min(1, (now - s0.timestamp) / tDiff));
-
-                        const interpParts = {};
+                        let alpha = tDiff > 0 ? Math.max(0, Math.min(1, (timestamp - s0.timestamp) / tDiff)) : 0;
+                        const interp = {};
                         for (const key of Object.keys(s1.parts)) {
-                            const p0 = s0.parts[key];
-                            const p1 = s1.parts[key];
+                            const p0 = s0.parts[key],
+                                p1 = s1.parts[key];
                             if (p0 && p1) {
-                                let a0 = p0.a;
-                                let a1 = p1.a;
-                                let angleDiff = a1 - a0;
-                                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                                interpParts[key] = {
+                                let a0 = p0.a,
+                                    a1 = p1.a;
+                                let adiff = a1 - a0;
+                                while (adiff > Math.PI) adiff -= Math.PI * 2;
+                                while (adiff < -Math.PI) adiff += Math.PI * 2;
+                                interp[key] = {
                                     x: p0.x + (p1.x - p0.x) * alpha,
                                     y: p0.y + (p1.y - p0.y) * alpha,
-                                    a: a0 + angleDiff * alpha,
+                                    a: a0 + adiff * alpha
                                 };
-                            } else if (p1) {
-                                interpParts[key] = { ...p1 };
-                            }
+                            } else if (p1) interp[key] = { ...p1 };
                         }
-                        rp.ragdollPartsData = interpParts;
+                        rp.ragdollPartsData = interp;
                     } else if (rp.states.length === 1) {
                         rp.ragdollPartsData = rp.states[0].parts;
                     }
                 }
             }
 
-            // ─────────────────────────────────────
+            // ────────────────────────────────
+            // FYSISKE KROPPE FOR REMOTE SPILLERE (kollision)
+            // ────────────────────────────────
+            function updateRemotePhysicsBodies() {
+                for (const [id, rp] of remotePlayers) {
+                    if (!rp.ragdollPartsData) continue;
+                    if (!rp.bodies) {
+                        // Opret kinematiske kroppe
+                        rp.bodies = [];
+                        const dims = {
+                            head: { type: 'circle', r: 17 },
+                            upperTorso: { type: 'rect', w: 28, h: 38 },
+                            lowerTorso: { type: 'rect', w: 24, h: 34 },
+                            leftUpperArm: { type: 'rect', w: 11, h: 28 },
+                            rightUpperArm: { type: 'rect', w: 11, h: 28 },
+                            leftLowerArm: { type: 'rect', w: 9, h: 26 },
+                            rightLowerArm: { type: 'rect', w: 9, h: 26 },
+                            leftUpperLeg: { type: 'rect', w: 13, h: 34 },
+                            rightUpperLeg: { type: 'rect', w: 13, h: 34 },
+                            leftLowerLeg: { type: 'rect', w: 11, h: 30 },
+                            rightLowerLeg: { type: 'rect', w: 11, h: 30 }
+                        };
+                        for (const [key, dim] of Object.entries(dims)) {
+                            const body = dim.type === 'circle' ?
+                                Bodies.circle(0, 0, dim.r, { isStatic: false, isSensor: false, density: 0,
+                                    friction: 0.8, restitution: 0.1, collisionFilter: { group: 0 },
+                                    label: 'remote_' + id }) :
+                                Bodies.rectangle(0, 0, dim.w, dim.h, { isStatic: false, isSensor: false,
+                                    density: 0, friction: 0.8, restitution: 0.1, collisionFilter: { group: 0 },
+                                    label: 'remote_' + id });
+                            Body.setStatic(body, false);
+                            Body.setVelocity(body, { x: 0, y: 0 });
+                            body.isKinematic = true;
+                            rp.bodies.push({ key, body });
+                            World.add(world, body);
+                        }
+                    }
+                    // Opdater positioner
+                    for (const { key, body } of rp.bodies) {
+                        const data = rp.ragdollPartsData[key];
+                        if (data) {
+                            Body.setPosition(body, { x: data.x, y: data.y });
+                            Body.setAngle(body, data.a);
+                            Body.setVelocity(body, { x: 0, y: 0 });
+                            Body.setAngularVelocity(body, 0);
+                        }
+                    }
+                }
+                // Fjern kroppe for spillere der er væk
+                for (const [id, rp] of remotePlayers) {
+                    if (!rp.ragdollPartsData && rp.bodies) {
+                        rp.bodies.forEach(b => World.remove(world, b.body));
+                        rp.bodies = null;
+                    }
+                }
+            }
+
+            // Ryd op når remote player forsvinder
+            const originalDelete = remotePlayers.delete;
+            remotePlayers.delete = function(id) {
+                const rp = this.get(id);
+                if (rp && rp.bodies) {
+                    rp.bodies.forEach(b => World.remove(world, b.body));
+                    rp.bodies = null;
+                }
+                return originalDelete.call(this, id);
+            };
+
+            // ────────────────────────────────
             // RENDERING
-            // ─────────────────────────────────────
+            // ────────────────────────────────
             function render(timestamp) {
                 ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-
                 const bgGrad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
                 bgGrad.addColorStop(0, '#1a2a3d');
                 bgGrad.addColorStop(0.5, '#1e2e42');
@@ -1006,63 +841,7 @@
                 ctx.fillStyle = bgGrad;
                 ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-                ctx.strokeStyle = 'rgba(255,255,255,0.02)';
-                ctx.lineWidth = 1;
-                const gridSize = 60;
-                for (let x = gridSize; x < GAME_WIDTH; x += gridSize) {
-                    ctx.beginPath();
-                    ctx.moveTo(x, 0);
-                    ctx.lineTo(x, GAME_HEIGHT);
-                    ctx.stroke();
-                }
-                for (let y = gridSize; y < GAME_HEIGHT; y += gridSize) {
-                    ctx.beginPath();
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(GAME_WIDTH, y);
-                    ctx.stroke();
-                }
-
-                renderPlatforms();
-
-                for (const [id, rp] of remotePlayers) {
-                    if (rp.ragdollPartsData) {
-                        renderRagdollFromData(rp.ragdollPartsData, rp.color, 0.65);
-                        const headData = rp.ragdollPartsData.head;
-                        if (headData) {
-                            ctx.fillStyle = rp.color;
-                            ctx.font = 'bold 11px "Segoe UI", Arial, sans-serif';
-                            ctx.textAlign = 'center';
-                            ctx.fillText(id.replace('player_', 'Spiller '), headData.x, headData.y - 28);
-                        }
-                    }
-                }
-
-                if (localRagdoll) {
-                    renderRagdollBodies(localRagdoll, localColor, 1.0);
-                    const headPos = localRagdoll.parts.head.position;
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('DIG', headPos.x, headPos.y - 28);
-                }
-
-                const deathGrad = ctx.createLinearGradient(0, RESPAWN_Y_THRESHOLD - 30, 0, RESPAWN_Y_THRESHOLD + 20);
-                deathGrad.addColorStop(0, 'rgba(231,76,60,0)');
-                deathGrad.addColorStop(0.5, 'rgba(231,76,60,0.15)');
-                deathGrad.addColorStop(1, 'rgba(231,76,60,0.4)');
-                ctx.fillStyle = deathGrad;
-                ctx.fillRect(0, RESPAWN_Y_THRESHOLD - 30, GAME_WIDTH, 60);
-                ctx.strokeStyle = 'rgba(231,76,60,0.5)';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([10, 20]);
-                ctx.beginPath();
-                ctx.moveTo(0, RESPAWN_Y_THRESHOLD);
-                ctx.lineTo(GAME_WIDTH, RESPAWN_Y_THRESHOLD);
-                ctx.stroke();
-                ctx.setLineDash([]);
-            }
-
-            function renderPlatforms() {
+                // Platforme
                 for (const plat of platforms) {
                     const verts = plat.vertices;
                     ctx.fillStyle = '#3d5068';
@@ -1074,30 +853,56 @@
                     ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
-                    const topY = Math.min(...verts.map(v => v.y));
-                    const minX = Math.min(...verts.map(v => v.x));
-                    const maxX = Math.max(...verts.map(v => v.x));
-                    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(minX, topY);
-                    ctx.lineTo(maxX, topY);
-                    ctx.stroke();
                 }
                 ctx.fillStyle = '#2c3d50';
                 ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GROUND_THICKNESS);
                 ctx.fillStyle = '#3d5068';
                 ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 6);
-                ctx.strokeStyle = '#546e8a';
+
+                // Remote spillere
+                for (const [id, rp] of remotePlayers) {
+                    if (rp.ragdollPartsData) {
+                        renderRagdollFromData(rp.ragdollPartsData, rp.color, 0.65);
+                        const hd = rp.ragdollPartsData.head;
+                        if (hd) {
+                            ctx.fillStyle = rp.color;
+                            ctx.font = 'bold 11px "Segoe UI"';
+                            ctx.textAlign = 'center';
+                            ctx.fillText(id.replace('player_', 'Spiller '), hd.x, hd.y - 28);
+                        }
+                    }
+                }
+
+                // Lokal spiller
+                if (localRagdoll) {
+                    const partsData = {};
+                    for (const [key, body] of Object.entries(localRagdoll.parts)) {
+                        partsData[key] = { x: body.position.x, y: body.position.y, a: body.angle };
+                    }
+                    renderRagdollFromData(partsData, localColor, 1.0);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 12px "Segoe UI"';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('DIG', partsData.head.x, partsData.head.y - 28);
+                }
+
+                // Dødszone
+                ctx.fillStyle = 'rgba(231,76,60,0.15)';
+                ctx.fillRect(0, RESPAWN_Y_THRESHOLD - 30, GAME_WIDTH, 60);
+                ctx.strokeStyle = 'rgba(231,76,60,0.5)';
                 ctx.lineWidth = 2;
-                ctx.strokeRect(0, GROUND_Y, GAME_WIDTH, GROUND_THICKNESS);
+                ctx.setLineDash([10, 20]);
+                ctx.beginPath();
+                ctx.moveTo(0, RESPAWN_Y_THRESHOLD);
+                ctx.lineTo(GAME_WIDTH, RESPAWN_Y_THRESHOLD);
+                ctx.stroke();
+                ctx.setLineDash([]);
             }
 
             function renderRagdollFromData(partsData, color, alpha) {
-                const partOrder = [
-                    'leftLowerLeg', 'rightLowerLeg', 'leftUpperLeg', 'rightUpperLeg',
+                const order = ['leftLowerLeg', 'rightLowerLeg', 'leftUpperLeg', 'rightUpperLeg',
                     'lowerTorso', 'leftLowerArm', 'rightLowerArm', 'leftUpperArm', 'rightUpperArm',
-                    'upperTorso', 'head',
+                    'upperTorso', 'head'
                 ];
                 const dims = {
                     head: { type: 'circle', r: 17 },
@@ -1110,25 +915,21 @@
                     leftUpperLeg: { type: 'rect', w: 13, h: 34 },
                     rightUpperLeg: { type: 'rect', w: 13, h: 34 },
                     leftLowerLeg: { type: 'rect', w: 11, h: 30 },
-                    rightLowerLeg: { type: 'rect', w: 11, h: 30 },
+                    rightLowerLeg: { type: 'rect', w: 11, h: 30 }
                 };
-                const darkerColor = darkenColor(color, 0.7);
-                const lighterColor = lightenColor(color, 0.25);
-
-                for (const key of partOrder) {
+                for (const key of order) {
                     const data = partsData[key];
+                    if (!data) continue;
                     const dim = dims[key];
-                    if (!data || !dim) continue;
                     ctx.save();
                     ctx.globalAlpha = alpha;
                     ctx.translate(data.x, data.y);
                     ctx.rotate(data.a);
-
                     if (dim.type === 'circle') {
-                        const headGrad = ctx.createRadialGradient(-3, -4, dim.r * 0.2, 0, 0, dim.r);
-                        headGrad.addColorStop(0, lighterColor);
-                        headGrad.addColorStop(1, darkerColor);
-                        ctx.fillStyle = headGrad;
+                        const grad = ctx.createRadialGradient(-3, -4, 3, 0, 0, dim.r);
+                        grad.addColorStop(0, lightenColor(color, 0.3));
+                        grad.addColorStop(1, darkenColor(color, 0.6));
+                        ctx.fillStyle = grad;
                         ctx.beginPath();
                         ctx.arc(0, 0, dim.r, 0, Math.PI * 2);
                         ctx.fill();
@@ -1154,12 +955,12 @@
                         ctx.beginPath();
                         ctx.arc(0, 4, 6, 0.1, Math.PI - 0.1);
                         ctx.stroke();
-                    } else if (dim.type === 'rect') {
-                        const bodyGrad = ctx.createLinearGradient(-dim.w / 2, 0, dim.w / 2, 0);
-                        bodyGrad.addColorStop(0, darkerColor);
-                        bodyGrad.addColorStop(0.5, color);
-                        bodyGrad.addColorStop(1, darkerColor);
-                        ctx.fillStyle = bodyGrad;
+                    } else {
+                        const grad = ctx.createLinearGradient(-dim.w / 2, 0, dim.w / 2, 0);
+                        grad.addColorStop(0, darkenColor(color, 0.7));
+                        grad.addColorStop(0.5, color);
+                        grad.addColorStop(1, darkenColor(color, 0.7));
+                        ctx.fillStyle = grad;
                         ctx.fillRect(-dim.w / 2, -dim.h / 2, dim.w, dim.h);
                         ctx.strokeStyle = 'rgba(0,0,0,0.45)';
                         ctx.lineWidth = 2;
@@ -1169,42 +970,33 @@
                 }
             }
 
-            function renderRagdollBodies(ragdoll, color, alpha) {
-                const partsData = {};
-                for (const [key, body] of Object.entries(ragdoll.parts)) {
-                    partsData[key] = { x: body.position.x, y: body.position.y, a: body.angle };
-                }
-                renderRagdollFromData(partsData, color, alpha);
-            }
-
             function darkenColor(hex, factor) {
-                const r = parseInt(hex.slice(1, 3), 16);
-                const g = parseInt(hex.slice(3, 5), 16);
-                const b = parseInt(hex.slice(5, 7), 16);
-                return `rgb(${Math.round(r * factor)},${Math.round(g * factor)},${Math.round(b * factor)})`;
+                const r = parseInt(hex.slice(1, 3), 16),
+                    g = parseInt(hex.slice(3, 5), 16),
+                    b = parseInt(hex.slice(5, 7), 16);
+                return `rgb(${Math.round(r*factor)},${Math.round(g*factor)},${Math.round(b*factor)})`;
             }
 
             function lightenColor(hex, factor) {
-                const r = parseInt(hex.slice(1, 3), 16);
-                const g = parseInt(hex.slice(3, 5), 16);
-                const b = parseInt(hex.slice(5, 7), 16);
-                return `rgb(${Math.min(255, Math.round(r + (255 - r) * factor))},${Math.min(255, Math.round(g + (255 - g) * factor))},${Math.min(255, Math.round(b + (255 - b) * factor))})`;
+                const r = parseInt(hex.slice(1, 3), 16),
+                    g = parseInt(hex.slice(3, 5), 16),
+                    b = parseInt(hex.slice(5, 7), 16);
+                return `rgb(${Math.min(255,Math.round(r+(255-r)*factor))},${Math.min(255,Math.round(g+(255-g)*factor))},${Math.min(255,Math.round(b+(255-b)*factor))})`;
             }
 
+            // Rens udgåede spillere
             setInterval(() => {
                 const now = performance.now();
                 for (const [id, rp] of remotePlayers) {
                     if (now - rp.lastUpdate > 8000) {
-                        remotePlayers.delete(id);
-                        updatePlayerCount();
+                        removeRemotePlayer(id);
                     }
                 }
             }, 3000);
 
+            // Start alt
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-
-            console.log('🎮 Ragdoll Fight 2.0 klar – Dash, hop & aktiv balance!');
         })();
     </script>
 </body>
