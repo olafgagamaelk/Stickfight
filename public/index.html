@@ -70,8 +70,8 @@
     </div>
     <div id="controlsHint">
         <span>WASD / Pile</span> = Bevæg · <span>Mellemrum</span> = Hop ·
-        <span>Venstre klik</span> = Slå venstre · <span>Højre klik</span> = Slå højre ·
-        <span>Cooldown</span> · <span>Rød boks</span> = slagzone
+        <span>Venstre klik</span> = Slag · <span>Højre klik</span> = Slag ·
+        <span>Rød boks</span> flyver fra kroppen
     </div>
 </div>
 
@@ -87,6 +87,9 @@
     const SWING_COOLDOWN_MS = 350;
     const MAX_HP = 100;
     const DAMAGE_PER_HIT = 20;
+    const PROJECTILE_SPEED = 0.7; // pixels pr. ms
+    const PROJECTILE_LIFETIME = 200; // ms
+    const PROJECTILE_WIDTH = 60, PROJECTILE_HEIGHT = 22;
 
     const PLAYER_COLORS = [
         '#4A90D9','#E74C3C','#2ECC71','#F39C12',
@@ -199,7 +202,7 @@
     const keys = {};
     let mouseX = GAME_WIDTH/2, mouseY = GAME_HEIGHT/2;
     let leftSwingCooldown = 0, rightSwingCooldown = 0;
-    let hitboxes = []; // midlertidige slagbokse
+    const projectiles = []; // flyvende slagbokse
 
     window.addEventListener('keydown', e => {
         keys[e.key.toLowerCase()] = true; keys[e.code] = true;
@@ -215,96 +218,49 @@
     canvas.addEventListener('mousedown', e => {
         const now = performance.now();
         if (e.button === 0 && now >= leftSwingCooldown && localRagdoll) {
-            performLeftSwing();
+            performSwing();
             leftSwingCooldown = now + SWING_COOLDOWN_MS;
         } else if (e.button === 2 && now >= rightSwingCooldown && localRagdoll) {
-            performRightSwing();
+            performSwing();
             rightSwingCooldown = now + SWING_COOLDOWN_MS;
         }
     });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-    function performLeftSwing() {
+    function performSwing() {
         if (!localRagdoll) return;
-        const swingForce = 1.25, dashForce = 0.25; // dash reduceret
         const torso = localRagdoll.parts.upperTorso;
-        burstSwing(localRagdoll.parts.leftUpperArm, localRagdoll.parts.leftLowerArm, mouseX, mouseY, swingForce);
-        const dx = mouseX - torso.position.x, dy = mouseY - torso.position.y;
-        const len = Math.sqrt(dx*dx+dy*dy) || 1;
-        Body.applyForce(torso, torso.position, { x: (dx/len)*dashForce, y: (dy/len)*dashForce*0.5 });
-        spawnHitbox('left');
-    }
-    function performRightSwing() {
-        if (!localRagdoll) return;
-        const swingForce = 1.25, dashForce = 0.25;
-        const torso = localRagdoll.parts.upperTorso;
-        burstSwing(localRagdoll.parts.rightUpperArm, localRagdoll.parts.rightLowerArm, mouseX, mouseY, swingForce);
-        const dx = mouseX - torso.position.x, dy = mouseY - torso.position.y;
-        const len = Math.sqrt(dx*dx+dy*dy) || 1;
-        Body.applyForce(torso, torso.position, { x: (dx/len)*dashForce, y: (dy/len)*dashForce*0.5 });
-        spawnHitbox('right');
-    }
-    function burstSwing(upper, lower, tx, ty, force) {
-        const sx = upper.position.x, sy = upper.position.y;
-        const ang = Math.atan2(ty-sy, tx-sx);
-        let diff = ang - upper.angle;
-        while (diff > Math.PI) diff -= Math.PI*2;
-        while (diff < -Math.PI) diff += Math.PI*2;
-        const dir = Math.sign(diff), mag = Math.min(Math.abs(diff)*1.5, 1.5);
-        Body.setAngularVelocity(upper, upper.angularVelocity + dir*force*mag);
-        Body.setAngularVelocity(lower, lower.angularVelocity + dir*force*mag*0.8);
-    }
-    function spawnHitbox(armSide) {
-        const hand = armSide === 'left' ? localRagdoll.parts.leftLowerArm : localRagdoll.parts.rightLowerArm;
-        const handPos = getHandWorldPos(hand, armSide === 'left' ? -1 : 1);
-        const torso = localRagdoll.parts.upperTorso;
-        const dirX = mouseX - torso.position.x, dirY = mouseY - torso.position.y;
-        const len = Math.sqrt(dirX*dirX+dirY*dirY) || 1;
-        const normX = dirX/len, normY = dirY/len;
-        const length = 50, width = 25;
-        const centerX = handPos.x + normX * length/2;
-        const centerY = handPos.y + normY * length/2;
-        const angle = Math.atan2(normY, normX);
-        hitboxes.push({
-            x: centerX, y: centerY, w: length, h: width, angle,
-            creationTime: performance.now(), lifeMs: 120
+        const dashForce = 0.25;
+        const dirX = mouseX - torso.position.x;
+        const dirY = mouseY - torso.position.y;
+        const len = Math.sqrt(dirX*dirX + dirY*dirY) || 1;
+        const normX = dirX / len, normY = dirY / len;
+
+        // Dash
+        Body.applyForce(torso, torso.position, {
+            x: normX * dashForce,
+            y: normY * dashForce * 0.5
         });
 
-        // Tjek for ramte modstandere
-        checkHitboxCollisions(centerX, centerY, length, width, angle);
-    }
-    function getHandWorldPos(arm, side) {
-        const angle = arm.angle, halfLen = 13;
-        return {
-            x: arm.position.x + Math.cos(angle)*halfLen*side*0.7 + Math.sin(angle)*halfLen,
-            y: arm.position.y + Math.sin(angle)*halfLen*side*0.7 - Math.cos(angle)*halfLen
-        };
-    }
-    function checkHitboxCollisions(cx, cy, len, wid, angle) {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        for (const [id, rp] of remotePlayers) {
-            if (!rp.ragdollPartsData) continue;
-            const head = rp.ragdollPartsData.head;
-            const torso = rp.ragdollPartsData.upperTorso;
-            const targets = [head, torso].filter(Boolean);
-            for (const t of targets) {
-                if (isPointInRotatedRect(t.x, t.y, cx, cy, len, wid, angle)) {
-                    const dx = t.x - cx, dy = t.y - cy;
-                    const dist = Math.sqrt(dx*dx+dy*dy) || 1;
-                    const impulse = { x: (dx/dist)*8 + 2*(Math.cos(angle)), y: (dy/dist)*8 - 3 };
-                    ws.send(JSON.stringify({ type:'hit', targetId:id, impulse, damage: DAMAGE_PER_HIT }));
-                    // Spawn en lille visuel effekt? (kan tilføjes senere)
-                    break; // kun ét hit pr boks
-                }
-            }
-        }
-    }
-    function isPointInRotatedRect(px, py, cx, cy, w, h, angle) {
-        const cos = Math.cos(-angle), sin = Math.sin(-angle);
-        const dx = px - cx, dy = py - cy;
-        const localX = dx * cos - dy * sin;
-        const localY = dx * sin + dy * cos;
-        return Math.abs(localX) <= w/2 && Math.abs(localY) <= h/2;
+        // Spawn projektil fra torso
+        const angle = Math.atan2(normY, normX);
+        projectiles.push({
+            x: torso.position.x,
+            y: torso.position.y,
+            vx: normX * PROJECTILE_SPEED,
+            vy: normY * PROJECTILE_SPEED,
+            angle: angle,
+            width: PROJECTILE_WIDTH,
+            height: PROJECTILE_HEIGHT,
+            startTime: performance.now(),
+            lifetime: PROJECTILE_LIFETIME,
+            hit: false
+        });
+
+        // Lille arm ryk (kun visuelt)
+        const armForce = 0.15;
+        Body.setAngularVelocity(localRagdoll.parts.leftUpperArm, normY * armForce);
+        Body.setAngularVelocity(localRagdoll.parts.rightUpperArm, -normY * armForce);
     }
 
     // ── HOP DETEKTION ────────────────────
@@ -317,7 +273,7 @@
             if (hasStatic && hasLeg) lastGroundContact = performance.now();
         }
     });
-    function isGrounded() { return (performance.now() - lastGroundContact) < 320; } // forlænget vindue
+    function isGrounded() { return (performance.now() - lastGroundContact) < 320; }
 
     // ── SPIL LOOP ─────────────────────────
     let lastNetworkSend = 0, lastFrameTime = performance.now();
@@ -329,7 +285,9 @@
         if (localRagdoll) applyLocalControls(dt);
         Engine.update(engine, 16.67);
         if (localRagdoll) checkRespawn();
-        updateHitboxes(timestamp);
+
+        // Opdater projektiler
+        updateProjectiles(timestamp, dt);
 
         if (timestamp - lastNetworkSend > NETWORK_INTERVAL) {
             lastNetworkSend = timestamp;
@@ -340,7 +298,7 @@
     }
 
     function applyLocalControls(dt) {
-        const moveForce = 0.018, jumpForce = 0.085; // let hopforstærkning
+        const moveForce = 0.018, jumpForce = 0.085;
         const torso = localRagdoll.parts.upperTorso;
         if (keys['arrowleft']||keys['a']||keys['keya']) Body.applyForce(torso, torso.position, {x:-moveForce,y:0});
         if (keys['arrowright']||keys['d']||keys['keyd']) Body.applyForce(torso, torso.position, {x:moveForce,y:0});
@@ -388,14 +346,57 @@
         leftSwingCooldown = 0; rightSwingCooldown = 0;
     }
 
-    // ── HITBOXES ──────────────────────────
-    function updateHitboxes(timestamp) {
-        hitboxes = hitboxes.filter(hb => timestamp - hb.creationTime < hb.lifeMs);
+    // ── PROJEKTIL SYSTEM ──────────────────
+    function updateProjectiles(now, dt) {
+        for (let i = projectiles.length-1; i >= 0; i--) {
+            const p = projectiles[i];
+            if (now - p.startTime > p.lifetime) {
+                projectiles.splice(i,1);
+                continue;
+            }
+            // Bevægelse
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+
+            // Kollisionstjek mod fjendtlige spillere
+            if (!p.hit && ws && ws.readyState === WebSocket.OPEN) {
+                for (const [id, rp] of remotePlayers) {
+                    if (!rp.ragdollPartsData) continue;
+                    const head = rp.ragdollPartsData.head;
+                    const torso = rp.ragdollPartsData.upperTorso;
+                    const targets = [head, torso].filter(Boolean);
+                    for (const t of targets) {
+                        if (isPointInRotatedRect(t.x, t.y, p.x, p.y, p.width, p.height, p.angle)) {
+                            // Hit!
+                            const dirX = Math.cos(p.angle), dirY = Math.sin(p.angle);
+                            ws.send(JSON.stringify({
+                                type: 'hit',
+                                targetId: id,
+                                impulse: { x: dirX * 6 + 2, y: dirY * 6 - 2 },
+                                damage: DAMAGE_PER_HIT
+                            }));
+                            p.hit = true;
+                            projectiles.splice(i,1);
+                            break;
+                        }
+                    }
+                    if (p.hit) break;
+                }
+            }
+        }
+    }
+
+    function isPointInRotatedRect(px, py, cx, cy, w, h, angle) {
+        const cos = Math.cos(-angle), sin = Math.sin(-angle);
+        const dx = px - cx, dy = py - cy;
+        const localX = dx * cos - dy * sin;
+        const localY = dx * sin + dy * cos;
+        return Math.abs(localX) <= w/2 && Math.abs(localY) <= h/2;
     }
 
     // ── NETVÆRK ───────────────────────────
     let ws = null, connected = false;
-    const remotePlayers = new Map(); // id -> { color, states, lastUpdate, ragdollPartsData, hp }
+    const remotePlayers = new Map();
 
     function connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -427,7 +428,10 @@
                 updatePlayerCount(); break;
             case 'playerJoined':
                 if (msg.id !== localPlayerId) {
-                    remotePlayers.set(msg.id, { color:msg.color, states:[], lastUpdate:performance.now(), ragdollPartsData:null, hp:MAX_HP });
+                    remotePlayers.set(msg.id, {
+                        color:msg.color, states:[], lastUpdate:performance.now(),
+                        ragdollPartsData:null, hp:MAX_HP
+                    });
                     updatePlayerCount();
                 } break;
             case 'playerLeft':
@@ -462,7 +466,10 @@
         if (!connected || !ws || ws.readyState !== WebSocket.OPEN || !localRagdoll) return;
         const partsData = {};
         for (const [key, body] of Object.entries(localRagdoll.parts)) {
-            partsData[key] = { x:body.position.x, y:body.position.y, a:body.angle, vx:body.velocity.x, vy:body.velocity.y, va:body.angularVelocity };
+            partsData[key] = {
+                x:body.position.x, y:body.position.y, a:body.angle,
+                vx:body.velocity.x, vy:body.velocity.y, va:body.angularVelocity
+            };
         }
         ws.send(JSON.stringify({ type:'update', parts:partsData, hp:localHp }));
     }
@@ -526,14 +533,14 @@
             ctx.fillText('DIG', localRagdoll.parts.head.position.x, localRagdoll.parts.head.position.y - 35);
         }
 
-        // Slagbokse
-        for (const hb of hitboxes) {
+        // Projektiler (røde bokse)
+        for (const p of projectiles) {
             ctx.save();
-            ctx.globalAlpha = 0.5;
-            ctx.translate(hb.x, hb.y);
-            ctx.rotate(hb.angle);
+            ctx.globalAlpha = 0.6;
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
             ctx.fillStyle = '#e94560';
-            ctx.fillRect(-hb.w/2, -hb.h/2, hb.w, hb.h);
+            ctx.fillRect(-p.width/2, -p.height/2, p.width, p.height);
             ctx.restore();
         }
 
@@ -632,7 +639,7 @@
 
     connectWebSocket();
     requestAnimationFrame(gameLoop);
-    console.log('🎮 Ragdoll Fight – Slagbokse, HP, ingen kollision, dash 0.25');
+    console.log('🎮 Ragdoll Fight – Flyvende slagbokse, ingen arm-skade');
 })();
 </script>
 </body>
