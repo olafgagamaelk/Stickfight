@@ -134,7 +134,7 @@
         <div id="controlsHint">
             <span>WASD / Piletaster</span> = Bevæg · <span>Mellemrum</span> = Hop ·
             <span>Venstre klik</span> = Slå venstre · <span>Højre klik</span> = Slå højre ·
-            <span>Cooldown</span> på slag
+            <span>Kun bevidste slag rammer</span>
         </div>
     </div>
 
@@ -153,6 +153,7 @@
             const GROUND_Y = 640;
             const GROUND_THICKNESS = 80;
             const SWING_COOLDOWN_MS = 350;
+            const HIT_WINDOW_MS = 200;          // kun registrér slag i 200ms efter et klik
 
             const PLAYER_COLORS = [
                 '#4A90D9', '#E74C3C', '#2ECC71', '#F39C12',
@@ -224,12 +225,12 @@
             }
 
             // ─────────────────────────────────────
-            // RAGDOLL BYGGER (kun lokal spiller)
+            // LOKAL RAGDOLL (ingen remote‑kroppe overhovedet)
             // ─────────────────────────────────────
             function createLocalRagdoll(spawnX, spawnY, color) {
                 const parts = {};
                 const constraints = [];
-                const group = -1; // lokal spiller kolliderer ikke med sig selv
+                const group = -1;
 
                 const headRadius = 17;
                 const upperTorsoW = 28;
@@ -356,13 +357,15 @@
             let localRagdoll = createLocalRagdoll(spawn.x, spawn.y, localColor);
 
             // ─────────────────────────────────────
-            // INPUT & COOLDOWN
+            // INPUT & COOLDOWN + slag‑vindue
             // ─────────────────────────────────────
             const keys = {};
             let mouseX = GAME_WIDTH / 2;
             let mouseY = GAME_HEIGHT / 2;
             let leftSwingCooldown = 0;
             let rightSwingCooldown = 0;
+            let lastLeftSwingTime = 0;   // tidspunkt for sidste venstre slag
+            let lastRightSwingTime = 0;
 
             window.addEventListener('keydown', e => {
                 keys[e.key.toLowerCase()] = true;
@@ -388,11 +391,13 @@
                     if (now >= leftSwingCooldown && localRagdoll) {
                         performLeftSwing();
                         leftSwingCooldown = now + SWING_COOLDOWN_MS;
+                        lastLeftSwingTime = now;          // gem tidspunkt for slag
                     }
                 } else if (e.button === 2) {
                     if (now >= rightSwingCooldown && localRagdoll) {
                         performRightSwing();
                         rightSwingCooldown = now + SWING_COOLDOWN_MS;
+                        lastRightSwingTime = now;
                     }
                 }
             });
@@ -485,7 +490,7 @@
 
             function applyLocalControls(dt) {
                 const moveForce = 0.018;
-                const jumpForce = 0.5;   // hop kraftigt forøget
+                const jumpForce = 0.5;        // hop kraftigt
                 const torso = localRagdoll.parts.upperTorso;
 
                 if (keys['arrowleft'] || keys['a'] || keys['keya']) Body.applyForce(torso, torso.position, { x: -moveForce, y: 0 });
@@ -545,7 +550,7 @@
             }
 
             // ─────────────────────────────────────
-            // NETVÆRK (remote spillere kun data)
+            // NETVÆRK (kun data – ingen fysik for remote)
             // ─────────────────────────────────────
             let ws = null;
             let connected = false;
@@ -607,13 +612,14 @@
 
             function applyKnockback(impulse) {
                 if (!localRagdoll) return;
-                const scale = 0.3;
+                const scale = 0.15;   // meget svag respons
                 const torso = localRagdoll.parts.upperTorso;
                 Body.applyForce(torso, torso.position, { x: impulse.x * scale, y: impulse.y * scale });
+                // små justeringer
                 for (const body of localRagdoll.allBodies) {
                     Body.setVelocity(body, {
-                        x: body.velocity.x + impulse.x * 0.05,
-                        y: body.velocity.y + impulse.y * 0.05,
+                        x: body.velocity.x + impulse.x * 0.02,
+                        y: body.velocity.y + impulse.y * 0.02,
                     });
                 }
             }
@@ -631,15 +637,29 @@
 
             function checkHitsOnRemotePlayers() {
                 if (!localRagdoll || remotePlayers.size === 0) return;
+                const now = performance.now();
+
+                // Kun tjek slag hvis vi for nylig har klikket (inden for HIT_WINDOW_MS)
+                const leftRecent = (now - lastLeftSwingTime) < HIT_WINDOW_MS;
+                const rightRecent = (now - lastRightSwingTime) < HIT_WINDOW_MS;
+                if (!leftRecent && !rightRecent) return;   // ingen aktive slag
+
                 const leftHand = getHandWorldPos(localRagdoll.parts.leftLowerArm, -1);
                 const rightHand = getHandWorldPos(localRagdoll.parts.rightLowerArm, 1);
-                const hands = [
-                    { pos: leftHand, body: localRagdoll.parts.leftLowerArm },
-                    { pos: rightHand, body: localRagdoll.parts.rightLowerArm },
-                ];
+
+                const hands = [];
+                if (leftRecent) {
+                    hands.push({ pos: leftHand, body: localRagdoll.parts.leftLowerArm });
+                }
+                if (rightRecent) {
+                    hands.push({ pos: rightHand, body: localRagdoll.parts.rightLowerArm });
+                }
+
                 for (const hand of hands) {
                     const handSpeed = Math.abs(hand.body.angularVelocity) + Math.abs(hand.body.velocity.x) + Math.abs(hand.body.velocity.y);
-                    if (handSpeed < 5) continue;
+                    // Kræv meget høj hastighed – kun når armen virkelig svinger
+                    if (handSpeed < 25) continue;
+
                     for (const [remoteId, rp] of remotePlayers) {
                         if (!rp.ragdollPartsData) continue;
                         const head = rp.ragdollPartsData.head;
@@ -655,8 +675,8 @@
                                     type: 'hit',
                                     targetId: remoteId,
                                     impulse: {
-                                        x: hand.body.velocity.x * 1.2 + (dx / (dist || 1)) * 3,
-                                        y: hand.body.velocity.y * 1.2 + (dy / (dist || 1)) * 3 - 1.5,
+                                        x: hand.body.velocity.x * 0.8 + (dx / (dist || 1)) * 2,
+                                        y: hand.body.velocity.y * 0.8 + (dy / (dist || 1)) * 2 - 1,
                                     },
                                 }));
                                 break;
@@ -830,7 +850,7 @@
 
             connectWebSocket();
             requestAnimationFrame(gameLoop);
-            console.log('🎮 Ragdoll Fight – ingen fysisk kontakt med andre');
+            console.log('🎮 Ragdoll Fight – kun bevidste slag, ingen passive kollisioner');
         })();
     </script>
 </body>
