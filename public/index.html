@@ -68,7 +68,7 @@
     </div>
     <div id="controlsHint">
         <span>WASD / Pile</span> = Bevæg · <span>Mellemrum</span> = Hop ·
-        <span>Venstre/højre klik</span> = Slag · <span>Rød firkant</span> flyver fra ryggen
+        <span>Venstre/højre klik</span> = Slag · <span>Rød firkant</span> flyver mod musen
     </div>
 </div>
 
@@ -84,10 +84,10 @@
     const SWING_COOLDOWN_MS = 350;
     const MAX_HP = 100;
     const DAMAGE_PER_HIT = 20;
-    const PROJECTILE_SPEED = 0.7;        // pixel/ms
-    const PROJECTILE_LIFETIME = 200;     // ms
-    const PROJECTILE_SIZE = 30;          // kvadratisk
-    const DASH_FORCE = 0.25;            // både dash og knockback
+    const PROJECTILE_SPEED = 0.8;        // pixel/ms (lidt hurtigere)
+    const PROJECTILE_LIFETIME = 250;     // ms (længere tid)
+    const PROJECTILE_SIZE = 36;          // lidt større firkant
+    const DASH_FORCE = 0.25;            // dash og knockback kraft
 
     const PLAYER_COLORS = [
         '#4A90D9','#E74C3C','#2ECC71','#F39C12',
@@ -233,16 +233,16 @@
         const len = Math.sqrt(dirX*dirX + dirY*dirY) || 1;
         const normX = dirX / len, normY = dirY / len;
 
-        // Dash (ryk selv)
+        // Dash
         Body.applyForce(torso, torso.position, {
             x: normX * DASH_FORCE,
             y: normY * DASH_FORCE * 0.5
         });
 
-        // Spawn projektil FRA MODSAT SIDE (bagved)
-        const spawnOffset = 35; // afstand bagud
-        const spawnX = torso.position.x - normX * spawnOffset;
-        const spawnY = torso.position.y - normY * spawnOffset;
+        // Spawn projektil FORAN (i klikkets retning)
+        const spawnOffset = 30; // afstand foran
+        const spawnX = torso.position.x + normX * spawnOffset;
+        const spawnY = torso.position.y + normY * spawnOffset;
 
         projectiles.push({
             x: spawnX,
@@ -254,7 +254,7 @@
             hit: false
         });
 
-        // Lille arm animation (kun visuelt)
+        // Lille arm ryk (kun visuelt)
         Body.setAngularVelocity(localRagdoll.parts.leftUpperArm, normY * 0.15);
         Body.setAngularVelocity(localRagdoll.parts.rightUpperArm, -normY * 0.15);
     }
@@ -356,9 +356,8 @@
                     const torso = rp.ragdollPartsData.upperTorso;
                     const targets = [head, torso].filter(Boolean);
                     for (const t of targets) {
-                        // AABB check (no rotation)
+                        // AABB hit check
                         if (Math.abs(t.x - p.x) <= PROJECTILE_SIZE/2 && Math.abs(t.y - p.y) <= PROJECTILE_SIZE/2) {
-                            // Hit! Retning = projektil bevægelsesretning (vx,vy)
                             const dirX = p.vx / PROJECTILE_SPEED || 0;
                             const dirY = p.vy / PROJECTILE_SPEED || 0;
                             ws.send(JSON.stringify({
@@ -438,7 +437,7 @@
 
     function applyKnockback(impulse) {
         if (!localRagdoll) return;
-        // Direkte hastighedsændring på torso, plus lidt på resten
+        // Direkte hastighedsændring på overkroppen, resten følger delvist
         const torso = localRagdoll.parts.upperTorso;
         Body.setVelocity(torso, {
             x: torso.velocity.x + impulse.x,
@@ -504,7 +503,6 @@
 
         renderPlatforms();
 
-        // Remote spillere
         for (const [id, rp] of remotePlayers) {
             if (rp.ragdollPartsData) {
                 renderRagdollFromData(rp.ragdollPartsData, rp.color, 0.7);
@@ -516,7 +514,6 @@
             }
         }
 
-        // Lokal spiller
         if (localRagdoll) {
             renderRagdollBodies(localRagdoll, localColor, 1.0);
             drawHealthBar({x:localRagdoll.parts.head.position.x, y:localRagdoll.parts.head.position.y}, localHp, MAX_HP);
@@ -524,13 +521,11 @@
             ctx.fillText('DIG', localRagdoll.parts.head.position.x, localRagdoll.parts.head.position.y - 35);
         }
 
-        // Projektil (rød firkant, ingen rotation)
         for (const p of projectiles) {
             ctx.fillStyle = '#e94560';
             ctx.fillRect(p.x - PROJECTILE_SIZE/2, p.y - PROJECTILE_SIZE/2, PROJECTILE_SIZE, PROJECTILE_SIZE);
         }
 
-        // Dødszone
         const deathGrad = ctx.createLinearGradient(0,RESPAWN_Y_THRESHOLD-30,0,RESPAWN_Y_THRESHOLD+20);
         deathGrad.addColorStop(0,'rgba(231,76,60,0)'); deathGrad.addColorStop(0.5,'rgba(231,76,60,0.15)'); deathGrad.addColorStop(1,'rgba(231,76,60,0.4)');
         ctx.fillStyle=deathGrad; ctx.fillRect(0,RESPAWN_Y_THRESHOLD-30,GAME_WIDTH,60);
@@ -625,7 +620,7 @@
 
     connectWebSocket();
     requestAnimationFrame(gameLoop);
-    console.log('🎮 Ragdoll Fight – Firkantet slag, spawn bag ryggen, knockback = dash');
+    console.log('🎮 Ragdoll Fight – Slag foran, knockback virker!');
 })();
 </script>
 </body>
