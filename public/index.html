@@ -11,9 +11,7 @@
             --text: #e0e0e0;
             --accent: #e94560;
         }
-        * {
-            margin: 0; padding: 0; box-sizing: border-box;
-        }
+        * { margin:0; padding:0; box-sizing:border-box; }
         body {
             background: var(--bg);
             display: flex; justify-content: center; align-items: center;
@@ -70,8 +68,7 @@
     </div>
     <div id="controlsHint">
         <span>WASD / Pile</span> = Bevæg · <span>Mellemrum</span> = Hop ·
-        <span>Venstre klik</span> = Slag · <span>Højre klik</span> = Slag ·
-        <span>Rød boks</span> flyver fra kroppen
+        <span>Venstre/højre klik</span> = Slag · <span>Rød firkant</span> flyver fra ryggen
     </div>
 </div>
 
@@ -87,9 +84,10 @@
     const SWING_COOLDOWN_MS = 350;
     const MAX_HP = 100;
     const DAMAGE_PER_HIT = 20;
-    const PROJECTILE_SPEED = 0.7; // pixels pr. ms
-    const PROJECTILE_LIFETIME = 200; // ms
-    const PROJECTILE_WIDTH = 60, PROJECTILE_HEIGHT = 22;
+    const PROJECTILE_SPEED = 0.7;        // pixel/ms
+    const PROJECTILE_LIFETIME = 200;     // ms
+    const PROJECTILE_SIZE = 30;          // kvadratisk
+    const DASH_FORCE = 0.25;            // både dash og knockback
 
     const PLAYER_COLORS = [
         '#4A90D9','#E74C3C','#2ECC71','#F39C12',
@@ -202,7 +200,7 @@
     const keys = {};
     let mouseX = GAME_WIDTH/2, mouseY = GAME_HEIGHT/2;
     let leftSwingCooldown = 0, rightSwingCooldown = 0;
-    const projectiles = []; // flyvende slagbokse
+    const projectiles = []; // { x, y, vx, vy, startTime, lifetime, hit }
 
     window.addEventListener('keydown', e => {
         keys[e.key.toLowerCase()] = true; keys[e.code] = true;
@@ -230,37 +228,35 @@
     function performSwing() {
         if (!localRagdoll) return;
         const torso = localRagdoll.parts.upperTorso;
-        const dashForce = 0.25;
         const dirX = mouseX - torso.position.x;
         const dirY = mouseY - torso.position.y;
         const len = Math.sqrt(dirX*dirX + dirY*dirY) || 1;
         const normX = dirX / len, normY = dirY / len;
 
-        // Dash
+        // Dash (ryk selv)
         Body.applyForce(torso, torso.position, {
-            x: normX * dashForce,
-            y: normY * dashForce * 0.5
+            x: normX * DASH_FORCE,
+            y: normY * DASH_FORCE * 0.5
         });
 
-        // Spawn projektil fra torso
-        const angle = Math.atan2(normY, normX);
+        // Spawn projektil FRA MODSAT SIDE (bagved)
+        const spawnOffset = 35; // afstand bagud
+        const spawnX = torso.position.x - normX * spawnOffset;
+        const spawnY = torso.position.y - normY * spawnOffset;
+
         projectiles.push({
-            x: torso.position.x,
-            y: torso.position.y,
+            x: spawnX,
+            y: spawnY,
             vx: normX * PROJECTILE_SPEED,
             vy: normY * PROJECTILE_SPEED,
-            angle: angle,
-            width: PROJECTILE_WIDTH,
-            height: PROJECTILE_HEIGHT,
             startTime: performance.now(),
             lifetime: PROJECTILE_LIFETIME,
             hit: false
         });
 
-        // Lille arm ryk (kun visuelt)
-        const armForce = 0.15;
-        Body.setAngularVelocity(localRagdoll.parts.leftUpperArm, normY * armForce);
-        Body.setAngularVelocity(localRagdoll.parts.rightUpperArm, -normY * armForce);
+        // Lille arm animation (kun visuelt)
+        Body.setAngularVelocity(localRagdoll.parts.leftUpperArm, normY * 0.15);
+        Body.setAngularVelocity(localRagdoll.parts.rightUpperArm, -normY * 0.15);
     }
 
     // ── HOP DETEKTION ────────────────────
@@ -286,7 +282,6 @@
         Engine.update(engine, 16.67);
         if (localRagdoll) checkRespawn();
 
-        // Opdater projektiler
         updateProjectiles(timestamp, dt);
 
         if (timestamp - lastNetworkSend > NETWORK_INTERVAL) {
@@ -306,10 +301,9 @@
             Body.applyForce(torso, torso.position, {x:0,y:-jumpForce});
             lastGroundContact = 0;
         }
-        // Aktiv ragdoll (stående)
+        // Aktiv ragdoll
         const uprightTorque = 0.3;
-        const torsoAngle = torso.angle;
-        let diff = 0 - torsoAngle;
+        let diff = 0 - torso.angle;
         while (diff > Math.PI) diff -= Math.PI*2;
         while (diff < -Math.PI) diff += Math.PI*2;
         Body.setAngularVelocity(torso, torso.angularVelocity + diff*uprightTorque);
@@ -318,7 +312,7 @@
         while (lowerDiff > Math.PI) lowerDiff -= Math.PI*2;
         while (lowerDiff < -Math.PI) lowerDiff += Math.PI*2;
         Body.setAngularVelocity(lowerTorso, lowerTorso.angularVelocity + lowerDiff*uprightTorque*0.7);
-        // Ben stabilisator
+        // Ben
         const legTorque = 0.35;
         for (const leg of [localRagdoll.parts.leftUpperLeg, localRagdoll.parts.leftLowerLeg, localRagdoll.parts.rightUpperLeg, localRagdoll.parts.rightLowerLeg]) {
             let lDiff = 0 - leg.angle;
@@ -333,9 +327,7 @@
 
     function checkRespawn() {
         const head = localRagdoll.parts.head, torso = localRagdoll.parts.upperTorso;
-        if (head.position.y > RESPAWN_Y_THRESHOLD || torso.position.y > RESPAWN_Y_THRESHOLD) {
-            respawnLocalPlayer();
-        }
+        if (head.position.y > RESPAWN_Y_THRESHOLD || torso.position.y > RESPAWN_Y_THRESHOLD) respawnLocalPlayer();
     }
     function respawnLocalPlayer() {
         localRagdoll.remove();
@@ -346,7 +338,7 @@
         leftSwingCooldown = 0; rightSwingCooldown = 0;
     }
 
-    // ── PROJEKTIL SYSTEM ──────────────────
+    // ── PROJEKTIL SYSTEM (AABB, no rotation) ──
     function updateProjectiles(now, dt) {
         for (let i = projectiles.length-1; i >= 0; i--) {
             const p = projectiles[i];
@@ -354,11 +346,9 @@
                 projectiles.splice(i,1);
                 continue;
             }
-            // Bevægelse
             p.x += p.vx * dt;
             p.y += p.vy * dt;
 
-            // Kollisionstjek mod fjendtlige spillere
             if (!p.hit && ws && ws.readyState === WebSocket.OPEN) {
                 for (const [id, rp] of remotePlayers) {
                     if (!rp.ragdollPartsData) continue;
@@ -366,13 +356,15 @@
                     const torso = rp.ragdollPartsData.upperTorso;
                     const targets = [head, torso].filter(Boolean);
                     for (const t of targets) {
-                        if (isPointInRotatedRect(t.x, t.y, p.x, p.y, p.width, p.height, p.angle)) {
-                            // Hit!
-                            const dirX = Math.cos(p.angle), dirY = Math.sin(p.angle);
+                        // AABB check (no rotation)
+                        if (Math.abs(t.x - p.x) <= PROJECTILE_SIZE/2 && Math.abs(t.y - p.y) <= PROJECTILE_SIZE/2) {
+                            // Hit! Retning = projektil bevægelsesretning (vx,vy)
+                            const dirX = p.vx / PROJECTILE_SPEED || 0;
+                            const dirY = p.vy / PROJECTILE_SPEED || 0;
                             ws.send(JSON.stringify({
                                 type: 'hit',
                                 targetId: id,
-                                impulse: { x: dirX * 6 + 2, y: dirY * 6 - 2 },
+                                impulse: { x: dirX * DASH_FORCE, y: dirY * DASH_FORCE },
                                 damage: DAMAGE_PER_HIT
                             }));
                             p.hit = true;
@@ -384,14 +376,6 @@
                 }
             }
         }
-    }
-
-    function isPointInRotatedRect(px, py, cx, cy, w, h, angle) {
-        const cos = Math.cos(-angle), sin = Math.sin(-angle);
-        const dx = px - cx, dy = py - cy;
-        const localX = dx * cos - dy * sin;
-        const localY = dx * sin + dy * cos;
-        return Math.abs(localX) <= w/2 && Math.abs(localY) <= h/2;
     }
 
     // ── NETVÆRK ───────────────────────────
@@ -454,11 +438,18 @@
 
     function applyKnockback(impulse) {
         if (!localRagdoll) return;
-        const scale = 0.5;
+        // Direkte hastighedsændring på torso, plus lidt på resten
         const torso = localRagdoll.parts.upperTorso;
-        Body.applyForce(torso, torso.position, { x:impulse.x*scale, y:impulse.y*scale });
+        Body.setVelocity(torso, {
+            x: torso.velocity.x + impulse.x,
+            y: torso.velocity.y + impulse.y
+        });
         for (const body of localRagdoll.allBodies) {
-            Body.setVelocity(body, { x:body.velocity.x+impulse.x*0.1, y:body.velocity.y+impulse.y*0.1 });
+            if (body === torso) continue;
+            Body.setVelocity(body, {
+                x: body.velocity.x + impulse.x * 0.3,
+                y: body.velocity.y + impulse.y * 0.3
+            });
         }
     }
 
@@ -533,15 +524,10 @@
             ctx.fillText('DIG', localRagdoll.parts.head.position.x, localRagdoll.parts.head.position.y - 35);
         }
 
-        // Projektiler (røde bokse)
+        // Projektil (rød firkant, ingen rotation)
         for (const p of projectiles) {
-            ctx.save();
-            ctx.globalAlpha = 0.6;
-            ctx.translate(p.x, p.y);
-            ctx.rotate(p.angle);
             ctx.fillStyle = '#e94560';
-            ctx.fillRect(-p.width/2, -p.height/2, p.width, p.height);
-            ctx.restore();
+            ctx.fillRect(p.x - PROJECTILE_SIZE/2, p.y - PROJECTILE_SIZE/2, PROJECTILE_SIZE, PROJECTILE_SIZE);
         }
 
         // Dødszone
@@ -639,7 +625,7 @@
 
     connectWebSocket();
     requestAnimationFrame(gameLoop);
-    console.log('🎮 Ragdoll Fight – Flyvende slagbokse, ingen arm-skade');
+    console.log('🎮 Ragdoll Fight – Firkantet slag, spawn bag ryggen, knockback = dash');
 })();
 </script>
 </body>
