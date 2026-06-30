@@ -68,7 +68,7 @@
     </div>
     <div id="controlsHint">
         <span>WASD / Pile</span> = Bevæg · <span>Mellemrum</span> = Hop ·
-        <span>Venstre/højre klik</span> = Slag · <span>Rød firkant</span> flyver mod musen
+        <span>Venstre/højre klik</span> = Slag · <span>Ram modstanderen med armene</span>
     </div>
 </div>
 
@@ -82,12 +82,11 @@
     const RESPAWN_Y_THRESHOLD = 780;
     const GROUND_Y = 640, GROUND_THICKNESS = 80;
     const SWING_COOLDOWN_MS = 350;
+    const ATTACK_WINDOW_MS = 150;          // vindue efter klik hvor slag kan ramme
+    const HIT_RANGE = 35;                  // afstand fra hånd til fjende for at ramme
     const MAX_HP = 100;
     const DAMAGE_PER_HIT = 20;
-    const PROJECTILE_SPEED = 0.8;        // pixel/ms (lidt hurtigere)
-    const PROJECTILE_LIFETIME = 250;     // ms (længere tid)
-    const PROJECTILE_SIZE = 36;          // lidt større firkant
-    const DASH_FORCE = 0.25;            // dash og knockback kraft
+    const KNOCKBACK_FORCE = 8.0;           // kraftig knockback
 
     const PLAYER_COLORS = [
         '#4A90D9','#E74C3C','#2ECC71','#F39C12',
@@ -196,11 +195,12 @@
     const spawn = getRandomSpawn();
     let localRagdoll = createRagdoll(spawn.x, spawn.y, localColor, LOCAL_COLLISION_GROUP);
 
-    // ── INPUT & COOLDOWN ──────────────────
+    // ── INPUT & ATTACK WINDOW ─────────────
     const keys = {};
     let mouseX = GAME_WIDTH/2, mouseY = GAME_HEIGHT/2;
-    let leftSwingCooldown = 0, rightSwingCooldown = 0;
-    const projectiles = []; // { x, y, vx, vy, startTime, lifetime, hit }
+    let swingCooldown = 0;                 // tidligst tilladte næste klik
+    let attackWindowEnd = 0;               // tidspunkt hvor angrebsvindue lukker
+    let attackHasHit = false;              // har vi allerede ramt i dette vindue?
 
     window.addEventListener('keydown', e => {
         keys[e.key.toLowerCase()] = true; keys[e.code] = true;
@@ -215,48 +215,31 @@
     });
     canvas.addEventListener('mousedown', e => {
         const now = performance.now();
-        if (e.button === 0 && now >= leftSwingCooldown && localRagdoll) {
-            performSwing();
-            leftSwingCooldown = now + SWING_COOLDOWN_MS;
-        } else if (e.button === 2 && now >= rightSwingCooldown && localRagdoll) {
-            performSwing();
-            rightSwingCooldown = now + SWING_COOLDOWN_MS;
+        if ((e.button === 0 || e.button === 2) && now >= swingCooldown && localRagdoll) {
+            performSwing(now);
+            swingCooldown = now + SWING_COOLDOWN_MS;
         }
     });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-    function performSwing() {
+    function performSwing(now) {
         if (!localRagdoll) return;
+        // Start angrebsvindue
+        attackWindowEnd = now + ATTACK_WINDOW_MS;
+        attackHasHit = false;
+
+        // Lille dash (valgfrit, uændret)
         const torso = localRagdoll.parts.upperTorso;
-        const dirX = mouseX - torso.position.x;
-        const dirY = mouseY - torso.position.y;
-        const len = Math.sqrt(dirX*dirX + dirY*dirY) || 1;
-        const normX = dirX / len, normY = dirY / len;
-
-        // Dash
+        const dirX = mouseX - torso.position.x, dirY = mouseY - torso.position.y;
+        const len = Math.sqrt(dirX*dirX+dirY*dirY) || 1;
         Body.applyForce(torso, torso.position, {
-            x: normX * DASH_FORCE,
-            y: normY * DASH_FORCE * 0.5
+            x: (dirX/len) * 0.25,
+            y: (dirY/len) * 0.25 * 0.5
         });
 
-        // Spawn projektil FORAN (i klikkets retning)
-        const spawnOffset = 30; // afstand foran
-        const spawnX = torso.position.x + normX * spawnOffset;
-        const spawnY = torso.position.y + normY * spawnOffset;
-
-        projectiles.push({
-            x: spawnX,
-            y: spawnY,
-            vx: normX * PROJECTILE_SPEED,
-            vy: normY * PROJECTILE_SPEED,
-            startTime: performance.now(),
-            lifetime: PROJECTILE_LIFETIME,
-            hit: false
-        });
-
-        // Lille arm ryk (kun visuelt)
-        Body.setAngularVelocity(localRagdoll.parts.leftUpperArm, normY * 0.15);
-        Body.setAngularVelocity(localRagdoll.parts.rightUpperArm, -normY * 0.15);
+        // Arm animation
+        Body.setAngularVelocity(localRagdoll.parts.leftUpperArm, dirY * 0.15);
+        Body.setAngularVelocity(localRagdoll.parts.rightUpperArm, -dirY * 0.15);
     }
 
     // ── HOP DETEKTION ────────────────────
@@ -282,7 +265,10 @@
         Engine.update(engine, 16.67);
         if (localRagdoll) checkRespawn();
 
-        updateProjectiles(timestamp, dt);
+        // Tjek nærkampskollision hvis i angrebsvindue
+        if (timestamp < attackWindowEnd && !attackHasHit && localRagdoll) {
+            checkMeleeHit(timestamp);
+        }
 
         if (timestamp - lastNetworkSend > NETWORK_INTERVAL) {
             lastNetworkSend = timestamp;
@@ -301,7 +287,6 @@
             Body.applyForce(torso, torso.position, {x:0,y:-jumpForce});
             lastGroundContact = 0;
         }
-        // Aktiv ragdoll
         const uprightTorque = 0.3;
         let diff = 0 - torso.angle;
         while (diff > Math.PI) diff -= Math.PI*2;
@@ -312,7 +297,6 @@
         while (lowerDiff > Math.PI) lowerDiff -= Math.PI*2;
         while (lowerDiff < -Math.PI) lowerDiff += Math.PI*2;
         Body.setAngularVelocity(lowerTorso, lowerTorso.angularVelocity + lowerDiff*uprightTorque*0.7);
-        // Ben
         const legTorque = 0.35;
         for (const leg of [localRagdoll.parts.leftUpperLeg, localRagdoll.parts.leftLowerLeg, localRagdoll.parts.rightUpperLeg, localRagdoll.parts.rightLowerLeg]) {
             let lDiff = 0 - leg.angle;
@@ -320,9 +304,50 @@
             while (lDiff < -Math.PI) lDiff += Math.PI*2;
             Body.setAngularVelocity(leg, leg.angularVelocity + lDiff*legTorque);
         }
-        // Dæmp arme
         const armDamping = 0.94;
         [localRagdoll.parts.leftUpperArm, localRagdoll.parts.rightUpperArm, localRagdoll.parts.leftLowerArm, localRagdoll.parts.rightLowerArm].forEach(a => Body.setAngularVelocity(a, a.angularVelocity*armDamping));
+    }
+
+    function checkMeleeHit(now) {
+        if (!ws || ws.readyState !== WebSocket.OPEN || remotePlayers.size === 0) return;
+        const leftHand = getHandWorldPos(localRagdoll.parts.leftLowerArm, -1);
+        const rightHand = getHandWorldPos(localRagdoll.parts.rightLowerArm, 1);
+        const hands = [leftHand, rightHand];
+
+        for (const [id, rp] of remotePlayers) {
+            if (!rp.ragdollPartsData) continue;
+            const head = rp.ragdollPartsData.head;
+            const torso = rp.ragdollPartsData.upperTorso;
+            const targets = [head, torso].filter(Boolean);
+            for (const t of targets) {
+                for (const hand of hands) {
+                    const dx = hand.x - t.x, dy = hand.y - t.y;
+                    const dist = Math.sqrt(dx*dx+dy*dy);
+                    if (dist < HIT_RANGE) {
+                        // Beregn retning fra lokal spiller til fjende
+                        const localPos = localRagdoll.parts.upperTorso.position;
+                        const dirX = t.x - localPos.x, dirY = t.y - localPos.y;
+                        const len = Math.sqrt(dirX*dirX+dirY*dirY) || 1;
+                        ws.send(JSON.stringify({
+                            type: 'hit',
+                            targetId: id,
+                            impulse: { x: (dirX/len) * KNOCKBACK_FORCE, y: (dirY/len) * KNOCKBACK_FORCE - 1 },
+                            damage: DAMAGE_PER_HIT
+                        }));
+                        attackHasHit = true;
+                        return; // kun ét hit pr. vindue
+                    }
+                }
+            }
+        }
+    }
+
+    function getHandWorldPos(arm, side) {
+        const angle = arm.angle, halfLen = 13;
+        return {
+            x: arm.position.x + Math.cos(angle) * halfLen * side * 0.7 + Math.sin(angle) * halfLen,
+            y: arm.position.y + Math.sin(angle) * halfLen * side * 0.7 - Math.cos(angle) * halfLen
+        };
     }
 
     function checkRespawn() {
@@ -335,46 +360,8 @@
         localRagdoll = createRagdoll(sp.x, sp.y, localColor, LOCAL_COLLISION_GROUP);
         lastGroundContact = 0;
         localHp = MAX_HP;
-        leftSwingCooldown = 0; rightSwingCooldown = 0;
-    }
-
-    // ── PROJEKTIL SYSTEM (AABB, no rotation) ──
-    function updateProjectiles(now, dt) {
-        for (let i = projectiles.length-1; i >= 0; i--) {
-            const p = projectiles[i];
-            if (now - p.startTime > p.lifetime) {
-                projectiles.splice(i,1);
-                continue;
-            }
-            p.x += p.vx * dt;
-            p.y += p.vy * dt;
-
-            if (!p.hit && ws && ws.readyState === WebSocket.OPEN) {
-                for (const [id, rp] of remotePlayers) {
-                    if (!rp.ragdollPartsData) continue;
-                    const head = rp.ragdollPartsData.head;
-                    const torso = rp.ragdollPartsData.upperTorso;
-                    const targets = [head, torso].filter(Boolean);
-                    for (const t of targets) {
-                        // AABB hit check
-                        if (Math.abs(t.x - p.x) <= PROJECTILE_SIZE/2 && Math.abs(t.y - p.y) <= PROJECTILE_SIZE/2) {
-                            const dirX = p.vx / PROJECTILE_SPEED || 0;
-                            const dirY = p.vy / PROJECTILE_SPEED || 0;
-                            ws.send(JSON.stringify({
-                                type: 'hit',
-                                targetId: id,
-                                impulse: { x: dirX * DASH_FORCE, y: dirY * DASH_FORCE },
-                                damage: DAMAGE_PER_HIT
-                            }));
-                            p.hit = true;
-                            projectiles.splice(i,1);
-                            break;
-                        }
-                    }
-                    if (p.hit) break;
-                }
-            }
-        }
+        swingCooldown = 0;
+        attackWindowEnd = 0;
     }
 
     // ── NETVÆRK ───────────────────────────
@@ -437,7 +424,7 @@
 
     function applyKnockback(impulse) {
         if (!localRagdoll) return;
-        // Direkte hastighedsændring på overkroppen, resten følger delvist
+        // Kraftig direkte hastighedsændring
         const torso = localRagdoll.parts.upperTorso;
         Body.setVelocity(torso, {
             x: torso.velocity.x + impulse.x,
@@ -446,8 +433,8 @@
         for (const body of localRagdoll.allBodies) {
             if (body === torso) continue;
             Body.setVelocity(body, {
-                x: body.velocity.x + impulse.x * 0.3,
-                y: body.velocity.y + impulse.y * 0.3
+                x: body.velocity.x + impulse.x * 0.4,
+                y: body.velocity.y + impulse.y * 0.4
             });
         }
     }
@@ -521,9 +508,18 @@
             ctx.fillText('DIG', localRagdoll.parts.head.position.x, localRagdoll.parts.head.position.y - 35);
         }
 
-        for (const p of projectiles) {
-            ctx.fillStyle = '#e94560';
-            ctx.fillRect(p.x - PROJECTILE_SIZE/2, p.y - PROJECTILE_SIZE/2, PROJECTILE_SIZE, PROJECTILE_SIZE);
+        // Vis angrebsvindue (gennemsigtig cirkel omkring hænder)
+        if (performance.now() < attackWindowEnd && localRagdoll) {
+            const leftHand = getHandWorldPos(localRagdoll.parts.leftLowerArm, -1);
+            const rightHand = getHandWorldPos(localRagdoll.parts.rightLowerArm, 1);
+            ctx.strokeStyle = '#ff4444';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(leftHand.x, leftHand.y, HIT_RANGE, 0, Math.PI*2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(rightHand.x, rightHand.y, HIT_RANGE, 0, Math.PI*2);
+            ctx.stroke();
         }
 
         const deathGrad = ctx.createLinearGradient(0,RESPAWN_Y_THRESHOLD-30,0,RESPAWN_Y_THRESHOLD+20);
@@ -610,7 +606,6 @@
         return `rgb(${r},${g},${b})`;
     }
 
-    // Rens timeoutede spillere
     setInterval(() => {
         const now = performance.now();
         for (const [id, rp] of remotePlayers) {
@@ -620,7 +615,7 @@
 
     connectWebSocket();
     requestAnimationFrame(gameLoop);
-    console.log('🎮 Ragdoll Fight – Slag foran, knockback virker!');
+    console.log('🎮 Ragdoll Fight – Nærkamp, pålidelig hitdetektion, kraftig knockback');
 })();
 </script>
 </body>
